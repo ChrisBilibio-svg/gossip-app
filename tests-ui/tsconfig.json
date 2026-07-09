@@ -1,0 +1,9 @@
+{
+  "//": "Type-checks the UI test suite only. The app's root tsconfig excludes tests-ui so the shared `npm run typecheck` (and CI) stays app-focused; this adds the jest globals the test files need. Run via `npm run typecheck:ui`.",
+  "extends": "../tsconfig.json",
+  "compilerOptions": {
+    "types": ["jest", "node"]
+  },
+  "include": ["."],
+  "exclude": []
+}
