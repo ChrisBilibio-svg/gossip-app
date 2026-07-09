@@ -1,0 +1,7 @@
+{
+  "extends": "expo/tsconfig.base",
+  "compilerOptions": {
+    "strict": true
+  },
+  "exclude": ["node_modules", "android", "ios", "tests-ui", "babel.config.cjs", "jest.config.cjs"]
+}
