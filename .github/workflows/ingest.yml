@@ -1,0 +1,43 @@
+name: Ingest gossip drafts
+# Optional discovery secrets: NEWS_API_KEY, NEWS_API_PROVIDER,
+# REDDIT_CLIENT_ID, REDDIT_CLIENT_SECRET, X_BEARER_TOKEN,
+# XAI_API_KEY, XAI_MAX_SEARCHES_PER_RUN, ENABLE_4CHAN.
+
+on:
+  schedule:
+    - cron: '0 11 * * *' # 11:00 UTC = 08:00 Brasília, daily
+  workflow_dispatch: {} # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  ingest:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Pull sources and draft rumors
+        run: |
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ]; then echo "::notice::Required secrets not configured; skipping ingest."; exit 0; fi
+          node scripts/ingest.mjs
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          ANTHROPIC_MODEL: claude-haiku-4-5
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          NEWS_API_PROVIDER: ${{ secrets.NEWS_API_PROVIDER }}
+          REDDIT_CLIENT_ID: ${{ secrets.REDDIT_CLIENT_ID }}
+          REDDIT_CLIENT_SECRET: ${{ secrets.REDDIT_CLIENT_SECRET }}
+          X_BEARER_TOKEN: ${{ secrets.X_BEARER_TOKEN }}
+          XAI_API_KEY: ${{ secrets.XAI_API_KEY }}
+          XAI_MAX_SEARCHES_PER_RUN: ${{ secrets.XAI_MAX_SEARCHES_PER_RUN }}
+          # 4chan is high-toxicity/low-signal for BR gossip. Keep unset/false unless Chris explicitly approves enabling it.
+          ENABLE_4CHAN: ${{ secrets.ENABLE_4CHAN }}

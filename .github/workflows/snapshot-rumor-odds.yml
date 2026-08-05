@@ -1,0 +1,35 @@
+name: Snapshot rumor odds
+
+on:
+  schedule:
+    - cron: '0 */3 * * *' # every 3 hours for market sparkline history
+  workflow_dispatch:
+    inputs:
+      dry_run:
+        description: 'true = print intended action only; false = insert odds snapshots'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  snapshot-rumor-odds:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Snapshot rumor odds
+        run: |
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then echo "::notice::Supabase credentials not configured; skipping this run."; exit 0; fi
+          node scripts/snapshot-rumor-odds.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RUMOR_ODDS_SNAPSHOT_DRY_RUN: ${{ github.event.inputs.dry_run || vars.RUMOR_ODDS_SNAPSHOT_DRY_RUN || 'false' }}

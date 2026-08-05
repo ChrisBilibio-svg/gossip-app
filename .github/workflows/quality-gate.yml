@@ -1,0 +1,48 @@
+name: Quality Gate
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  verify:
+    name: Typecheck, tests, UI tests, config, and dependency audit
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Node tests
+        run: npm test
+
+      - name: UI typecheck
+        run: npm run typecheck:ui
+
+      - name: UI tests
+        run: npm run test:ui
+
+      - name: Env-file security preflight
+        run: npm run config:preflight -- --env-file-security-only
+
+      - name: Dependency audit
+        run: npm run audit:deps

@@ -1,0 +1,42 @@
+name: Resolve expired prediction deadlines
+
+on:
+  schedule:
+    - cron: '30 11 * * *' # 11:30 UTC = 08:30 Brasília, after ingest
+  workflow_dispatch:
+    inputs:
+      limit:
+        description: 'Max expired deadline predictions to resolve in one run'
+        required: false
+        default: '25'
+      dry_run:
+        description: 'true = list candidates only; false = resolve expired deadlines as CAP'
+        required: false
+        default: 'true'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  resolve-deadlines:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Resolve expired prediction deadlines
+        run: |
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then echo "::notice::Supabase credentials not configured; skipping this run."; exit 0; fi
+          node scripts/resolve-deadlines.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RESOLVE_DEADLINES_LIMIT: ${{ github.event.inputs.limit || vars.RESOLVE_DEADLINES_LIMIT || '25' }}
+          # Safe default: dry-run unless manually dispatched with dry_run=false
+          # or repository variable RESOLVE_DEADLINES_DRY_RUN is explicitly set false.
+          RESOLVE_DEADLINES_DRY_RUN: ${{ github.event.inputs.dry_run || vars.RESOLVE_DEADLINES_DRY_RUN || 'true' }}

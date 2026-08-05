@@ -1,0 +1,40 @@
+name: Snapshot leaderboard ranks
+
+on:
+  schedule:
+    - cron: '0 12 * * *' # 12:00 UTC = 09:00 Brasília, after ingest/deadline jobs
+  workflow_dispatch:
+    inputs:
+      snapshot_date:
+        description: 'Snapshot date in YYYY-MM-DD; blank = today UTC'
+        required: false
+        default: ''
+      dry_run:
+        description: 'true = print intended action only; false = upsert snapshot rows'
+        required: false
+        default: 'false'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  snapshot-leaderboard-ranks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Snapshot leaderboard ranks
+        run: |
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then echo "::notice::Supabase credentials not configured; skipping this run."; exit 0; fi
+          node scripts/snapshot-leaderboard-ranks.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          RANK_SNAPSHOT_DATE: ${{ github.event.inputs.snapshot_date || '' }}
+          RANK_SNAPSHOT_DRY_RUN: ${{ github.event.inputs.dry_run || vars.RANK_SNAPSHOT_DRY_RUN || 'false' }}
