@@ -2,16 +2,19 @@ import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-nati
 
 import { useTheme } from '../theme/ThemeProvider';
 import { fonts, radius, spacing } from '../theme/tokens';
+import { CLOSED_LOOP_COIN_COPY } from '../lib/economy';
 
 /**
- * Viddi Pro paywall — SCAFFOLD ONLY, no billing wired. Pricing/copy are
- * placeholders pending sign-off; the CTA is intentionally inert ("Em breve").
+ * Viddi Pro paywall — feature-flagged scaffold. Checkout remains inert until
+ * platform store products, age-rating/legal review, and server-side receipt
+ * verification/webhooks are live. Prices shown here are placeholders; production
+ * UI must render the localized price returned by Apple/Google/billing provider.
  */
 const PERKS = [
-  { icon: '⏱️', title: 'Alertas antecipados', body: 'Receba os mercados quentes antes de todo mundo.' },
-  { icon: '📊', title: 'Analytics avançado', body: 'Sua precisão, tendências e desempenho por tema.' },
-  { icon: '✨', title: 'Flair de perfil', body: 'Cosméticos e destaque de status no ranking.' },
-  { icon: '🔮', title: 'Persona de Profeta', body: 'Avatar e visual exclusivos para quem se destaca nos palpites.' },
+  { icon: '🪙', title: '300 moedas agora', body: 'Crédito imediato só depois da compra ser verificada no servidor.' },
+  { icon: '📆', title: '40 moedas por dia', body: '30 dias de serviço com acúmulo automático, mesmo sem abrir o app.' },
+  { icon: '🛟', title: 'Piso diário Pro', body: 'No limite diário, se o saldo estiver abaixo de 1.000, o servidor completa antes das 40 moedas.' },
+  { icon: '📊', title: 'Insights Pro', body: 'Acesso antecipado a odds, gráficos e estatísticas antes do palpite.' },
 ];
 
 export default function ProSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
@@ -23,8 +26,8 @@ export default function ProSheet({ visible, onClose }: { visible: boolean; onClo
           <View style={[styles.grabber, { backgroundColor: colors.border }]} />
           <ScrollView contentContainerStyle={styles.body} showsVerticalScrollIndicator={false}>
             <Text style={[styles.kicker, { color: colors.primary }]}>VIDDI PRO</Text>
-            <Text style={[styles.title, { color: colors.text }]}>Vire um Profeta Pro</Text>
-            <Text style={[styles.subtitle, { color: colors.muted }]}>Velocidade e status — não altera resultados.</Text>
+            <Text style={[styles.title, { color: colors.text }]}>Assinatura mensal Pro</Text>
+            <Text style={[styles.subtitle, { color: colors.muted }]}>Moedas de entretenimento + insights. Nunca altera verdade, placar de habilidade ou resolução.</Text>
 
             {PERKS.map((p) => (
               <View key={p.title} style={styles.perk}>
@@ -37,19 +40,27 @@ export default function ProSheet({ visible, onClose }: { visible: boolean; onClo
             ))}
 
             <View style={[styles.priceBox, { backgroundColor: colors.raised, borderColor: colors.border }]}>
-              <Text style={[styles.price, { color: colors.text }]}>
-                R$ 19,90<Text style={[styles.priceUnit, { color: colors.muted }]}>/mês</Text>
-              </Text>
-              <Text style={[styles.priceNote, { color: colors.faint }]}>Cancele quando quiser.</Text>
+              <Text style={[styles.priceLabel, { color: colors.faint }]}>preço localizado da loja</Text>
+              <Text style={[styles.price, { color: colors.text }]}>—</Text>
+              <Text style={[styles.priceNote, { color: colors.faint }]}>Benchmark EUA: US$ 4,99/mês. Produção deve exibir o preço localizado retornado pela loja.</Text>
             </View>
 
-            <Text style={[styles.fairplay, { color: colors.faint }]}>
-              🔒 O Pro nunca muda a verdade nem o placar. Dinheiro não pesa no palpite.
-            </Text>
+            <View style={[styles.scheduleBox, { borderColor: colors.border }]}>
+              <Text style={[styles.scheduleTitle, { color: colors.text }]}>Agenda de moedas verificada</Text>
+              <Text style={[styles.scheduleLine, { color: colors.muted }]}>300 agora + 40 × 30 dias = 1.500 moedas programadas.</Text>
+              <Text style={[styles.scheduleLine, { color: colors.muted }]}>Cancelamento não remove moedas já concedidas; apenas interrompe grants futuros quando o direito expirar.</Text>
+            </View>
 
-            <Pressable style={[styles.cta, { backgroundColor: colors.primary }]} disabled accessibilityRole="button" accessibilityLabel="Viddi Pro em breve">
-              <Text style={[styles.ctaText, { color: colors.onPrimary }]}>Em breve</Text>
+            <Text style={[styles.fairplay, { color: colors.faint }]}>{CLOSED_LOOP_COIN_COPY}</Text>
+            <Text style={[styles.fairplay, { color: colors.faint }]}>Renovação, restauração, grace period, retry, cancelamento, expiração, reembolso e revogação são processados por recibos/webhooks verificados no servidor. Não registramos dados sensíveis de pagamento em analytics.</Text>
+
+            <Pressable style={[styles.cta, { backgroundColor: colors.primary }]} disabled accessibilityRole="button" accessibilityLabel="Assinatura Pro indisponível até revisão legal e pagamentos verificados">
+              <Text style={[styles.ctaText, { color: colors.onPrimary }]}>Checkout bloqueado por feature flag</Text>
             </Pressable>
+            <Pressable style={[styles.restore, { borderColor: colors.border }]} disabled accessibilityRole="button" accessibilityLabel="Restaurar compra indisponível até integração da loja">
+              <Text style={[styles.restoreText, { color: colors.muted }]}>Restaurar compra — em breve</Text>
+            </Pressable>
+            <Text style={[styles.cancel, { color: colors.faint }]}>Para cancelar, use as assinaturas da App Store/Google Play quando a compra estiver ativa.</Text>
             <Pressable onPress={onClose} accessibilityRole="button" accessibilityLabel="Fechar">
               <Text style={[styles.close, { color: colors.muted }]}>Agora não</Text>
             </Pressable>
@@ -67,18 +78,24 @@ const styles = StyleSheet.create({
   body: { paddingHorizontal: spacing.xl, paddingBottom: spacing.xl, gap: spacing.xs },
   kicker: { fontFamily: fonts.monoBold, fontSize: 11, letterSpacing: 1 },
   title: { fontFamily: fonts.sansBold, fontSize: 22, marginTop: 4 },
-  subtitle: { fontFamily: fonts.sans, fontSize: 13, marginBottom: spacing.md },
+  subtitle: { fontFamily: fonts.sans, fontSize: 13, marginBottom: spacing.md, lineHeight: 19 },
   perk: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start', marginTop: spacing.sm },
   perkIcon: { fontSize: 22, width: 30, textAlign: 'center' },
   perkText: { flex: 1 },
   perkTitle: { fontFamily: fonts.sansSemi, fontSize: 14 },
   perkBody: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18, marginTop: 1 },
   priceBox: { alignItems: 'center', borderWidth: 1, borderRadius: radius.md, paddingVertical: spacing.lg, marginTop: spacing.lg },
+  priceLabel: { fontFamily: fonts.mono, fontSize: 10, textTransform: 'uppercase', letterSpacing: 0.7 },
   price: { fontFamily: fonts.monoBold, fontSize: 28 },
-  priceUnit: { fontFamily: fonts.monoMed, fontSize: 14 },
-  priceNote: { fontFamily: fonts.sans, fontSize: 12, marginTop: 2 },
-  fairplay: { fontFamily: fonts.sans, fontSize: 12, textAlign: 'center', lineHeight: 18, marginTop: spacing.md },
+  priceNote: { fontFamily: fonts.sans, fontSize: 11, marginTop: 2, textAlign: 'center', paddingHorizontal: spacing.md, lineHeight: 16 },
+  scheduleBox: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
+  scheduleTitle: { fontFamily: fonts.sansSemi, fontSize: 13, marginBottom: 4 },
+  scheduleLine: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18 },
+  fairplay: { fontFamily: fonts.sans, fontSize: 11, textAlign: 'center', lineHeight: 17, marginTop: spacing.md },
   cta: { borderRadius: radius.sm + 2, paddingVertical: spacing.md, alignItems: 'center', marginTop: spacing.md, opacity: 0.7 },
   ctaText: { fontFamily: fonts.sansBold, fontSize: 15 },
+  restore: { borderWidth: 1, borderRadius: radius.sm + 2, paddingVertical: spacing.sm, alignItems: 'center', marginTop: spacing.sm, opacity: 0.7 },
+  restoreText: { fontFamily: fonts.sansSemi, fontSize: 13 },
+  cancel: { fontFamily: fonts.sans, fontSize: 10, textAlign: 'center', lineHeight: 15, marginTop: spacing.sm },
   close: { fontFamily: fonts.sansMed, fontSize: 13, textAlign: 'center', marginTop: spacing.md },
 });

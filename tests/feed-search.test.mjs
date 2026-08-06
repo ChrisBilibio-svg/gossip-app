@@ -51,7 +51,8 @@ test('filterRumorsByQuery is case and accent insensitive', () => {
 test('searchRumorsByQuery uses server search RPC when configured', () => {
   assert.match(feedSearchSource, /export\s+async\s+function\s+searchRumorsByQuery\s*\(\s*query:\s*string[\s\S]*Promise<\s*FeedResult\s*>/);
   assert.match(feedSearchSource, /supabase\.rpc\s*\(\s*'search_rumors'\s*,\s*\{\s*p_query:\s*query\.trim\s*\(\s*\)\s*,\s*p_limit:\s*limit\s*\}/);
-  assert.match(feedSearchSource, /mapRumorRows\s*\(\s*\(\s*data\s*\?\?\s*\[\s*\]\s*\)\s+as\s+RumorRow\[\]\s*\)/);
+  assert.match(feedSearchSource, /attachEditorialImages\s*\(\s*\(\s*data\s*\?\?\s*\[\s*\]\s*\)\s+as\s+RumorRow\[\]\s*\)/);
+  assert.match(feedSearchSource, /mapRumorRows\s*\(\s*rows\s*\)/);
 });
 
 test('searchRumorsByQuery falls back to local filtering when RPC is missing or Supabase is unconfigured', () => {

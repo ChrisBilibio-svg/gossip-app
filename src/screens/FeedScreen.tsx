@@ -19,6 +19,8 @@ import MarketCard from '../components/MarketCard';
 import RumorDetail from '../components/RumorDetail';
 import Icon from '../components/icons/Icon';
 import { SkeletonMarketCard } from '../components/Skeleton';
+import CoinStoreButton from '../components/CoinStoreButton';
+import PredictionSlip from '../components/PredictionSlip';
 
 type Tab = 'open' | 'resolved';
 
@@ -78,7 +80,17 @@ export default function FeedScreen() {
   const [resolvedSort, setResolvedSort] = useState<ResolvedSort>('recent');
   const [outcome, setOutcome] = useState<ResolvedOutcome>('all');
   const [selected, setSelected] = useState<Rumor | null>(null);
+  const [tradeRumor, setTradeRumor] = useState<Rumor | null>(null);
+  const [tradeChoice, setTradeChoice] = useState<Choice | null>(null);
   const [localChoices, setLocalChoices] = useState<Record<string, Choice>>({});
+
+  const applyPlacedChoice = useCallback((rumor: Rumor, choice: Choice) => {
+    const votedId = rumor.id;
+    const patchChoice = (row: Rumor) => (row.id === votedId ? applyLocalChoice(row, choice) : row);
+    setLocalChoices((prev) => ({ ...prev, [votedId]: choice }));
+    setRumors((prev) => prev.map(patchChoice));
+    setSelected((prev) => (prev ? patchChoice(prev) : prev));
+  }, []);
 
   const load = useCallback(async () => {
     const r = await fetchFeed();
@@ -152,23 +164,32 @@ export default function FeedScreen() {
   );
 
   const TopBar = (
-    <View style={[styles.topBar, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-      <Text style={[styles.logo, { color: colors.text }]}>
-        Viddi<Text style={{ color: colors.primary }}>.</Text>
-      </Text>
-      <View style={styles.topIcons}>
-        <Pressable onPress={() => setSearchOpen((s) => !s)} accessibilityRole="button" accessibilityLabel="Buscar" hitSlop={8}>
-          <Feather name="search" size={18} color={searchOpen ? colors.primary : colors.muted} />
-        </Pressable>
-        <Pressable
-          onPress={() => setFiltersOpen((s) => !s)}
-          accessibilityRole="button"
-          accessibilityLabel="Ordenar e filtrar mercados"
-          accessibilityState={{ expanded: filtersOpen }}
-          hitSlop={8}
-        >
-          <Feather name="sliders" size={18} color={filtersOpen || hasActiveFilter ? colors.primary : colors.muted} />
-        </Pressable>
+    <View style={{ backgroundColor: colors.bg }}>
+      <View style={[styles.topBar, { borderBottomColor: colors.border }]}>
+        <View style={styles.masthead}>
+          <Text style={[styles.logo, { color: colors.text }]}>Viddi<Text style={{ color: colors.primary }}>.</Text></Text>
+          <View style={[styles.mastDivider, { backgroundColor: colors.border }]} />
+          <Text style={[styles.columnName, { color: colors.primary }]}>A Coluna</Text>
+        </View>
+        <View style={styles.topIcons}>
+          <CoinStoreButton compact />
+          <Pressable onPress={() => setSearchOpen((s) => !s)} accessibilityRole="button" accessibilityLabel="Buscar" hitSlop={12}>
+            <Feather name="search" size={18} color={searchOpen ? colors.primary : colors.muted} />
+          </Pressable>
+          <Pressable
+            onPress={() => setFiltersOpen((s) => !s)}
+            accessibilityRole="button"
+            accessibilityLabel="Ordenar e filtrar mercados"
+            accessibilityState={{ expanded: filtersOpen }}
+            hitSlop={12}
+          >
+            <Feather name="sliders" size={18} color={filtersOpen || hasActiveFilter ? colors.primary : colors.muted} />
+          </Pressable>
+        </View>
+      </View>
+      <View style={[styles.editionLine, { borderBottomColor: colors.border }]}>
+        <Text style={[styles.editionDate, { color: colors.text }]}>EDIÇÃO DE HOJE</Text>
+        <Text style={[styles.editionCopy, { color: colors.faint }]}>fofoca com contexto, palpite com odds</Text>
       </View>
     </View>
   );
@@ -313,7 +334,10 @@ export default function FeedScreen() {
           <MarketCard
             rumor={item}
             onPress={setSelected}
-            onTakePosition={(r) => setSelected(r)}
+            onTakePosition={(r, side) => {
+              setTradeRumor(r);
+              setTradeChoice(side);
+            }}
             featured={index === 0 && tab === 'open' && !hasSearch && !hasActiveFilter}
           />
         )}
@@ -324,15 +348,24 @@ export default function FeedScreen() {
         onClose={() => setSelected(null)}
         onVoted={(choice) => {
           if (!selected) return;
-          const votedId = selected.id;
-          const patchChoice = (rumor: Rumor) => (rumor.id === votedId ? applyLocalChoice(rumor, choice) : rumor);
-          setLocalChoices((prev) => ({ ...prev, [votedId]: choice }));
-          setRumors((prev) => prev.map(patchChoice));
-          setSelected((prev) => (prev ? patchChoice(prev) : prev));
+          applyPlacedChoice(selected, choice);
         }}
         onReact={reactToRumor}
         onOpenRumor={(id) => getRumorById(id).then((r) => r && setSelected(r))}
       />
+      {tradeRumor ? (
+        <PredictionSlip
+          rumor={tradeRumor}
+          choice={tradeChoice}
+          visible={Boolean(tradeRumor && tradeChoice)}
+          onClose={() => {
+            setTradeRumor(null);
+            setTradeChoice(null);
+          }}
+          onPlaced={(choice) => applyPlacedChoice(tradeRumor, choice)}
+          onError={(message) => setError(message)}
+        />
+      ) : null}
     </View>
   );
 }
@@ -347,8 +380,14 @@ const styles = StyleSheet.create({
     paddingBottom: spacing.md,
     borderBottomWidth: 1,
   },
-  logo: { fontFamily: fonts.sansBold, fontSize: 20, letterSpacing: -0.4 },
+  masthead: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexShrink: 1 },
+  logo: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 24, letterSpacing: -0.6 },
+  mastDivider: { width: 1, height: 22 },
+  columnName: { fontFamily: fonts.serif, fontSize: 15 },
   topIcons: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
+  editionLine: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, paddingHorizontal: spacing.lg, paddingVertical: 7, borderBottomWidth: 1 },
+  editionDate: { fontFamily: fonts.monoBold, fontSize: 9, letterSpacing: 0.8 },
+  editionCopy: { fontFamily: fonts.serif, fontSize: 11, flexShrink: 1, textAlign: 'right' },
   body: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
   searchBox: {
     flexDirection: 'row',
@@ -362,13 +401,13 @@ const styles = StyleSheet.create({
   },
   searchInput: { flex: 1, minHeight: 40, fontFamily: fonts.sans, fontSize: 14 },
   segment: { flexDirection: 'row', borderWidth: 1, borderRadius: radius.sm, padding: 3, marginBottom: spacing.md },
-  segBtn: { flex: 1, paddingVertical: 6, borderRadius: 6, alignItems: 'center' },
+  segBtn: { flex: 1, minHeight: 44, paddingVertical: 6, borderRadius: 6, alignItems: 'center', justifyContent: 'center' },
   segText: { fontSize: 12 },
   filterPanel: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginBottom: spacing.md },
   filterSection: { fontFamily: fonts.monoSemi, fontSize: 9, letterSpacing: 0.8, marginBottom: spacing.sm },
   filterMeta: { fontFamily: fonts.mono, fontSize: 10, marginTop: spacing.md },
   filterChips: { flexDirection: 'row', flexWrap: 'wrap', gap: spacing.sm },
-  filterChip: { borderWidth: 1, borderRadius: radius.chip, paddingHorizontal: spacing.md, paddingVertical: 6 },
+  filterChip: { minHeight: 44, borderWidth: 1, borderRadius: radius.chip, paddingHorizontal: spacing.md, paddingVertical: 6, justifyContent: 'center' },
   filterChipText: { fontFamily: fonts.sansMed, fontSize: 11 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: spacing.xl, gap: spacing.sm },
   errTitle: { fontFamily: fonts.sansSemi, fontSize: 15 },

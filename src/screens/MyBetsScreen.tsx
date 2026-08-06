@@ -1,23 +1,24 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '../theme/ThemeProvider';
 import { fonts, radius, spacing } from '../theme/tokens';
-import { getMyBets, type MyBet } from '../lib/bets';
+import { getMyFixedPositions, noCashValueReminder, type FixedPosition } from '../lib/economy';
 import { Skeleton } from '../components/Skeleton';
 import Icon from '../components/icons/Icon';
+import CoinStoreButton from '../components/CoinStoreButton';
 
 interface Props {
-  onWinPress?: (bet: MyBet) => void;
+  onWinPress?: (position: FixedPosition) => void;
 }
 
-export default function MyBetsScreen({ onWinPress }: Props) {
+export default function MyBetsScreen({ onWinPress: _onWinPress }: Props) {
   const { colors } = useTheme();
-  const [bets, setBets] = useState<MyBet[]>([]);
+  const [positions, setPositions] = useState<FixedPosition[]>([]);
   const [loading, setLoading] = useState(true);
 
   const load = useCallback(async () => {
-    setBets(await getMyBets());
+    setPositions(await getMyFixedPositions());
     setLoading(false);
   }, []);
 
@@ -25,11 +26,11 @@ export default function MyBetsScreen({ onWinPress }: Props) {
     load();
   }, [load]);
 
-  const pending = useMemo(() => bets.filter((b) => !b.resolved), [bets]);
-  const resolved = useMemo(() => bets.filter((b) => b.resolved), [bets]);
-  const correct = resolved.filter((b) => b.isCorrect === true).length;
-  const points = resolved.reduce((sum, b) => sum + (b.isCorrect ? (b.pointsAwarded ?? 0) : 0), 0);
-  const accuracy = resolved.length > 0 ? `${Math.round((correct / resolved.length) * 100)}%` : '—';
+  const open = useMemo(() => positions.filter((p) => p.status === 'OPEN'), [positions]);
+  const settled = useMemo(() => positions.filter((p) => p.status !== 'OPEN'), [positions]);
+  const won = settled.filter((p) => p.status === 'WON').length;
+  const returned = settled.reduce((sum, p) => sum + (p.actualReturnCoins ?? 0), 0);
+  const accuracy = settled.length > 0 ? `${Math.round((won / settled.length) * 100)}%` : '—';
 
   if (loading) {
     return (
@@ -44,14 +45,11 @@ export default function MyBetsScreen({ onWinPress }: Props) {
               </View>
             ))}
           </View>
-          <Skeleton width={70} height={10} style={{ marginBottom: spacing.sm }} />
+          <Skeleton width={110} height={10} style={{ marginBottom: spacing.sm }} />
           {[0, 1].map((i) => (
-            <View
-              key={i}
-              style={[styles.posCard, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: spacing.sm }]}
-            >
+            <View key={i} style={[styles.posCard, { backgroundColor: colors.card, borderColor: colors.border, marginBottom: spacing.sm }]}>
               <Skeleton width="90%" height={12} />
-              <Skeleton width="40%" height={11} style={{ marginTop: spacing.md }} />
+              <Skeleton width="60%" height={11} style={{ marginTop: spacing.md }} />
             </View>
           ))}
         </View>
@@ -62,107 +60,42 @@ export default function MyBetsScreen({ onWinPress }: Props) {
   return (
     <View style={{ flex: 1, backgroundColor: colors.bg }}>
       <Header />
-      <ScrollView
-        contentContainerStyle={styles.body}
-        refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={colors.primary} />}
-      >
-        {/* Summary */}
+      <ScrollView contentContainerStyle={styles.body} refreshControl={<RefreshControl refreshing={false} onRefresh={load} tintColor={colors.primary} />}>
         <View style={[styles.summary, { backgroundColor: colors.card, borderColor: colors.border }]}>
-          <SummaryCell value={points.toLocaleString('pt-BR')} label="pontos" valueColor={colors.gold} divider />
+          <SummaryCell value={returned.toLocaleString('pt-BR')} label="retornos em moedas" valueColor={colors.gold} divider />
           <SummaryCell value={accuracy} label="acertos" valueColor={colors.text} divider />
-          <SummaryCell value={String(pending.length)} label="abertas" valueColor={colors.text} />
+          <SummaryCell value={String(open.length)} label="abertas" valueColor={colors.text} />
         </View>
 
-        {/* Open */}
-        <Text style={[styles.section, { color: colors.faint }]}>ABERTAS</Text>
-        {pending.length === 0 ? (
+        <Text style={[styles.section, { color: colors.faint }]}>MINHAS POSIÇÕES · ABERTAS</Text>
+        {open.length === 0 ? (
           <View style={[styles.emptyCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
             <Text style={[styles.emptyTitle, { color: colors.muted }]}>Nenhuma posição aberta.</Text>
-            <Text style={[styles.emptySub, { color: colors.faint }]}>Faça seus primeiros palpites 👀</Text>
+            <Text style={[styles.emptySub, { color: colors.faint }]}>Abra um mercado, escolha Verdade/Mentira e defina um stake de moedas.</Text>
           </View>
         ) : (
           <View style={{ gap: spacing.sm }}>
-            {pending.map((b) => (
-              <View key={b.rumorId} style={[styles.posCard, { backgroundColor: colors.card, borderColor: colors.border }]}>
-                <Text style={[styles.posHeadline, { color: colors.text }]} numberOfLines={2}>
-                  {b.summary}
-                </Text>
-                <View style={styles.posRow}>
-                  <View style={styles.choiceRow}>
-                    <Icon name={b.choice === 'true' ? 'verdade' : 'mentira'} color={b.choice === 'true' ? colors.tea : colors.cap} size={14} />
-                    <Text style={[styles.side, { color: b.choice === 'true' ? colors.tea : colors.cap }]}>
-                      {b.choice === 'true' ? 'Verdade' : 'Mentira'}
-                    </Text>
-                  </View>
-                  <Text style={[styles.posMeta, { color: colors.faint }]}>aguardando resolução</Text>
-                </View>
-              </View>
-            ))}
+            {open.map((p) => <PositionCard key={p.id} position={p} />)}
           </View>
         )}
 
-        {/* Resolved */}
-        {resolved.length > 0 ? (
+        {settled.length > 0 ? (
           <>
-            <Text style={[styles.section, { color: colors.faint, marginTop: spacing.lg }]}>RESOLVIDAS</Text>
+            <Text style={[styles.section, { color: colors.faint, marginTop: spacing.lg }]}>PREDICTION RESULTS · SETTLED</Text>
             <View style={{ gap: spacing.sm }}>
-              {resolved.map((b) => {
-                const voided = b.status === 'void';
-                const won = b.isCorrect === true && !voided;
-                return (
-                  <Pressable
-                    key={b.rumorId}
-                    onPress={won && onWinPress ? () => onWinPress(b) : undefined}
-                    accessibilityRole={won && onWinPress ? 'button' : undefined}
-                    style={[
-                      styles.posCard,
-                      {
-                        backgroundColor: colors.card,
-                        borderColor: won ? colors.teaBorderDim : colors.border,
-                        opacity: won ? 1 : voided ? 0.9 : 0.75,
-                      },
-                    ]}
-                  >
-                    <View style={styles.settledTop}>
-                      <Text
-                        style={[styles.posHeadline, { color: won || voided ? colors.text : colors.muted, flex: 1 }]}
-                        numberOfLines={2}
-                      >
-                        {b.summary}
-                      </Text>
-                      <Text style={[styles.points, { color: won ? colors.gold : voided ? colors.faint : colors.capRed }]}>
-                        {won ? `+${b.pointsAwarded ?? 0} pts` : voided ? 'devolvido' : '0 pts'}
-                      </Text>
-                    </View>
-                    <View style={styles.posRow}>
-                      <View style={styles.choiceRow}>
-                        <Icon name={b.choice === 'true' ? 'verdade' : 'mentira'} color={b.choice === 'true' ? colors.tea : colors.cap} size={14} />
-                        <Text style={[styles.side, { color: b.choice === 'true' ? colors.tea : colors.cap }]}>
-                          {b.choice === 'true' ? 'Verdade' : 'Mentira'}
-                        </Text>
-                      </View>
-                      {voided ? (
-                        <Text style={[styles.posMeta, { color: colors.faint }]}>Anulado — sem veredito · palpite devolvido</Text>
-                      ) : !won ? (
-                        <Text style={[styles.posMeta, { color: colors.faint }]}>Não foi dessa vez</Text>
-                      ) : null}
-                    </View>
-                  </Pressable>
-                );
-              })}
+              {settled.map((p) => <PositionCard key={p.id} position={p} />)}
             </View>
           </>
         ) : null}
 
-        {bets.length === 0 ? (
+        {positions.length === 0 ? (
           <View style={styles.zeroWrap}>
             <Icon name="target" color={colors.faint} size={34} />
-            <Text style={[styles.emptyTitle, { color: colors.text }]}>Você ainda não palpitou</Text>
-            <Text style={[styles.emptySub, { color: colors.faint }]}>
-              Vá para Mercados, escolha Verdade ou Mentira e comece seu histórico.
-            </Text>
+            <Text style={[styles.emptyTitle, { color: colors.text }]}>Você ainda não tem posições</Text>
+            <Text style={[styles.emptySub, { color: colors.faint }]}>Todo palpite agora exige stake de moedas virtuais. {noCashValueReminder()}</Text>
           </View>
         ) : null}
+        <Text style={[styles.disclaimer, { color: colors.faint }]}>{noCashValueReminder()}</Text>
         <View style={{ height: spacing.xxl }} />
       </ScrollView>
     </View>
@@ -171,23 +104,44 @@ export default function MyBetsScreen({ onWinPress }: Props) {
   function Header() {
     return (
       <View style={[styles.header, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-        <Text style={[styles.title, { color: colors.text }]}>Meus Palpites</Text>
+        <Text style={[styles.title, { color: colors.text }]}>My Predictions</Text>
+        <CoinStoreButton compact />
       </View>
     );
   }
 }
 
-function SummaryCell({
-  value,
-  label,
-  valueColor,
-  divider,
-}: {
-  value: string;
-  label: string;
-  valueColor: string;
-  divider?: boolean;
-}) {
+function PositionCard({ position }: { position: FixedPosition }) {
+  const { colors } = useTheme();
+  const open = position.status === 'OPEN';
+  const won = position.status === 'WON';
+  const voided = position.status === 'VOID';
+  const sideColor = position.outcomeKey === 'true' ? colors.tea : colors.cap;
+  const actual = position.actualReturnCoins == null ? '—' : `${position.actualReturnCoins.toLocaleString('pt-BR')} moedas`;
+  const statusLabel = position.status === 'OPEN' ? 'ABERTO' : position.status === 'WON' ? 'GANHOU' : position.status === 'LOST' ? 'PERDEU' : 'ANULADO';
+  return (
+    <View style={[styles.posCard, { backgroundColor: colors.card, borderColor: won ? colors.teaBorderDim : colors.border, opacity: position.status === 'LOST' ? 0.78 : 1 }]}>
+      <Text style={[styles.posHeadline, { color: colors.text }]} numberOfLines={2}>{position.question}</Text>
+      <View style={styles.posRow}>
+        <View style={styles.choiceRow}>
+          <Icon name={position.outcomeKey === 'true' ? 'verdade' : 'mentira'} color={sideColor} size={14} />
+          <Text style={[styles.side, { color: sideColor }]}>{position.stakeCoins} moedas em {position.outcomeKey === 'true' ? 'Verdade' : 'Mentira'}</Text>
+        </View>
+        <Text style={[styles.status, { color: won ? colors.tea : voided ? colors.faint : open ? colors.gold : colors.capRed }]}>{statusLabel}</Text>
+      </View>
+      <View style={styles.details}>
+        <Text style={[styles.posMeta, { color: colors.faint }]}>Odds fixadas: {position.lockedDecimalOdds.toFixed(2)}x</Text>
+        <Text style={[styles.posMeta, { color: colors.faint }]}>Retorno potencial: {position.potentialTotalReturnCoins.toLocaleString('pt-BR')} moedas</Text>
+        <Text style={[styles.posMeta, { color: colors.faint }]}>Ganho líquido potencial: {position.potentialNetWinCoins.toLocaleString('pt-BR')} moedas</Text>
+        <Text style={[styles.posMeta, { color: colors.faint }]}>Retorno real à carteira: {actual}</Text>
+        <Text style={[styles.posMeta, { color: colors.faint }]}>Status do mercado: {position.marketStatus}</Text>
+        {position.settledAt ? <Text style={[styles.posMeta, { color: colors.faint }]}>Data de resolução: {new Date(position.settledAt).toLocaleDateString('pt-BR')}</Text> : null}
+      </View>
+    </View>
+  );
+}
+
+function SummaryCell({ value, label, valueColor, divider }: { value: string; label: string; valueColor: string; divider?: boolean }) {
   const { colors } = useTheme();
   return (
     <View style={[styles.cell, divider && { borderRightWidth: 1, borderRightColor: colors.border }]}>
@@ -198,26 +152,25 @@ function SummaryCell({
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1 },
-  title: { fontFamily: fonts.sansBold, fontSize: 17 },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 20 },
   body: { paddingHorizontal: spacing.lg, paddingTop: spacing.md },
-  centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
   summary: { flexDirection: 'row', borderWidth: 1, borderRadius: radius.md, paddingVertical: spacing.md, marginBottom: spacing.lg },
   cell: { flex: 1, alignItems: 'center' },
   cellValue: { fontFamily: fonts.monoBold, fontSize: 18 },
   cellLabel: { fontFamily: fonts.sans, fontSize: 10, marginTop: 2 },
   section: { fontFamily: fonts.monoBold, fontSize: 10, letterSpacing: 1, marginBottom: spacing.sm },
   posCard: { borderWidth: 1, borderRadius: radius.sm + 2, padding: spacing.md },
-  posHeadline: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 17 },
-  settledTop: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm, marginBottom: spacing.sm },
-  posRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginTop: spacing.sm },
-  choiceRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
+  posHeadline: { fontFamily: fonts.sansSemi, fontSize: 12, lineHeight: 17 },
+  posRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.sm, marginTop: spacing.sm },
+  choiceRow: { flexDirection: 'row', alignItems: 'center', gap: 6, flex: 1 },
   side: { fontFamily: fonts.monoSemi, fontSize: 11 },
+  status: { fontFamily: fonts.monoBold, fontSize: 10 },
+  details: { gap: 3, marginTop: spacing.sm },
   posMeta: { fontFamily: fonts.mono, fontSize: 10 },
-  points: { fontFamily: fonts.monoBold, fontSize: 13 },
-  emptyCard: { borderWidth: 1, borderRadius: radius.md, paddingVertical: 28, alignItems: 'center', gap: 4 },
+  emptyCard: { borderWidth: 1, borderRadius: radius.md, paddingVertical: 28, alignItems: 'center', gap: 4, paddingHorizontal: spacing.md },
   emptyTitle: { fontFamily: fonts.sansMed, fontSize: 13, textAlign: 'center' },
-  emptySub: { fontFamily: fonts.sans, fontSize: 12, textAlign: 'center' },
+  emptySub: { fontFamily: fonts.sans, fontSize: 12, textAlign: 'center', lineHeight: 18 },
   zeroWrap: { alignItems: 'center', paddingTop: 40, gap: spacing.sm },
-  zeroEmoji: { fontSize: 32 },
+  disclaimer: { fontFamily: fonts.sans, fontSize: 10, lineHeight: 15, textAlign: 'center', marginTop: spacing.lg },
 });

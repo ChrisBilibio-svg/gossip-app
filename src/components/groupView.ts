@@ -22,7 +22,7 @@ export const MIN_DURATION_DAYS = 1;
 export const MAX_DURATION_DAYS = 365;
 
 /** Curated, on-theme emoji set for a group's icon (optional, matches avatar vibe). */
-export const GROUP_EMOJIS = ['🍵', '👑', '🔥', '🎯', '💅', '⚽', '📺', '🎬', '🌟', '🐍', '🎉', '🧢'];
+export const GROUP_EMOJIS = ['📰', '👑', '🔥', '🎯', '💅', '⚽', '📺', '🎬', '🌟', '🐍', '🎉', '💬'];
 
 /** end-date `days` from now, as a Date for `createGroup`. */
 export function endsAtFromDays(days: number): Date {

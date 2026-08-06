@@ -1,0 +1,48 @@
+name: Auto-curate & publish daily markets
+
+# Gathers fresh gossip, AI-screens it, and auto-publishes only clean,
+# non-sensitive, allowlisted markets (Verdade/Mentira, 7-day betting window).
+# Everything the guardrails reject is queued as a draft for human review —
+# nothing is ever lost. Tunable via repo Variables (Settings -> Secrets and
+# variables -> Actions -> Variables):
+#   AUTO_PUBLISH_KILLED      "true" to pause auto-publish (default here: false)
+#   AUTO_PUBLISH_DAILY_CAP   max auto-publishes per UTC day (default: 3)
+#   AUTO_PUBLISH_CATEGORIES  comma list (default: Música,Novelas,Celebridades,Influencers)
+
+on:
+  schedule:
+    - cron: '20 11 * * *' # 11:20 UTC = 08:20 Brasília, after the 11:00 ingest, before rotate-daily-hero (11:45)
+  workflow_dispatch: {} # lets you trigger it manually from the Actions tab
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  auto-curate:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Gather, screen, and auto-publish clean markets
+        run: |
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || [ -z "${ANTHROPIC_API_KEY:-}" ]; then echo "::notice::Required secrets not configured; skipping auto-curate."; exit 0; fi
+          node scripts/auto-curate.mjs --live
+        env:
+          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          ANTHROPIC_MODEL: claude-haiku-4-5
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          NEWS_API_KEY: ${{ secrets.NEWS_API_KEY }}
+          NEWS_API_PROVIDER: ${{ secrets.NEWS_API_PROVIDER }}
+          # Guardrails (overridable via repo Variables; safe defaults below):
+          AUTO_PUBLISH_KILLED: ${{ vars.AUTO_PUBLISH_KILLED || 'false' }}
+          # Loosened 2026-08-03 so the feed self-sustains: higher daily cap + widen the
+          # allowlist to include Cultura pop (a large share of drafts was being queued, not published).
+          AUTO_PUBLISH_DAILY_CAP: ${{ vars.AUTO_PUBLISH_DAILY_CAP || '8' }}
+          AUTO_PUBLISH_CATEGORIES: ${{ vars.AUTO_PUBLISH_CATEGORIES || 'Música,Novelas,Celebridades,Influencers,Cultura pop' }}

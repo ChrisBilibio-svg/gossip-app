@@ -1,0 +1,35 @@
+name: Assign daily editorial images
+
+on:
+  workflow_run:
+    workflows: ['Auto-curate & publish daily markets']
+    types: [completed]
+    branches: [main]
+  schedule:
+    - cron: '10 */3 * * *' # reconciliation plus later same-day publications
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  assign-daily-images:
+    if: github.event_name != 'workflow_run' || (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.head_branch == 'main')
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Assign one attributed photo per category
+        run: |
+          if [ -z "${SUPABASE_URL:-}" ] || [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ] || [ -z "${PEXELS_API_KEY:-}" ]; then echo "::notice::Required secrets not configured; skipping editorial images."; exit 0; fi
+          node scripts/assign-daily-images.mjs --live
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          PEXELS_API_KEY: ${{ secrets.PEXELS_API_KEY }}

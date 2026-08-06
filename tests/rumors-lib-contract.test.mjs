@@ -18,6 +18,7 @@ test('getRumorById reads one published non-draft rumor through RLS-safe table qu
 
 test('getRumorById maps with the same caller-state and mapRumorRows path as fetchFeed legacy', () => {
   assert.match(rumorsSource, /const\s+rowsWithMine\s*=\s*await\s+attachCallerState\s*\(\s*\[\s*data\s+as\s+(?:unknown\s+as\s+)?RumorRow\s*\]\s*\)/);
-  assert.match(rumorsSource, /const\s+rowsWithOdds\s*=\s*await\s+attachOddsHistory\s*\(\s*rowsWithMine\s*\)/);
+  assert.match(rumorsSource, /const\s+rowsWithImages\s*=\s*await\s+attachEditorialImages\s*\(\s*rowsWithMine\s*,\s*\{\s*currentDateOnly:\s*false\s*\}\s*\)/);
+  assert.match(rumorsSource, /const\s+rowsWithOdds\s*=\s*await\s+attachOddsHistory\s*\(\s*rowsWithImages\s*\)/);
   assert.match(rumorsSource, /return\s+mapRumorRows\s*\(\s*rowsWithOdds\s*\)\s*\[\s*0\s*\]\s*\?\?\s*null/);
 });

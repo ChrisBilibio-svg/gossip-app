@@ -7,7 +7,7 @@ import { fonts, spacing } from '../theme/tokens';
 export type Tab = 'feed' | 'bets' | 'social' | 'rank' | 'profile';
 
 const ITEMS: { key: Tab; label: string; icon: keyof typeof Feather.glyphMap }[] = [
-  { key: 'feed', label: 'Mercados', icon: 'home' },
+  { key: 'feed', label: 'A Coluna', icon: 'home' },
   { key: 'bets', label: 'Palpites', icon: 'trending-up' },
   { key: 'social', label: 'Social', icon: 'users' },
   { key: 'rank', label: 'O Profeta', icon: 'award' },
@@ -30,6 +30,7 @@ export default function BottomNav({ tab, onChange }: { tab: Tab; onChange: (t: T
             accessibilityState={{ selected: active }}
             accessibilityLabel={it.label}
           >
+            {active ? <View style={[styles.activeRule, { backgroundColor: colors.primary }]} /> : null}
             <Feather name={it.icon} size={20} color={color} />
             <Text style={[styles.label, { color, fontFamily: active ? fonts.sansSemi : fonts.sans }]}>{it.label}</Text>
           </Pressable>
@@ -41,6 +42,7 @@ export default function BottomNav({ tab, onChange }: { tab: Tab; onChange: (t: T
 
 const styles = StyleSheet.create({
   nav: { flexDirection: 'row', borderTopWidth: 1, paddingTop: spacing.sm, paddingBottom: spacing.lg },
-  item: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: spacing.xs, minWidth: 44 },
+  item: { flex: 1, alignItems: 'center', gap: 3, paddingVertical: spacing.xs, minWidth: 44, position: 'relative' },
+  activeRule: { position: 'absolute', top: -spacing.sm, width: 28, height: 2 },
   label: { fontSize: 10 },
 });

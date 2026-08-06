@@ -9,7 +9,9 @@ import OddsBar from './OddsBar';
 import StatusChip from './StatusChip';
 import Sparkline from './Sparkline';
 import Icon from './icons/Icon';
-import { canSeeMarketStats, deadlineLabel, marketOdds, marketVolume, placeholderSparkline, toMarketStatus } from './marketView';
+import EditorialArtwork from './EditorialArtwork';
+import { deadlineLabel, marketOdds, marketVolume, placeholderSparkline, toMarketStatus } from './marketView';
+import { offeredDecimalOdds } from '../lib/economy';
 
 interface Props {
   rumor: Rumor;
@@ -20,7 +22,7 @@ interface Props {
 }
 
 /** A rumor rendered as a prediction MARKET: status, odds bar, volume, position. */
-export default function MarketCard({ rumor, onPress, onTakePosition, featured, viewerIsPro = false }: Props) {
+export default function MarketCard({ rumor, onPress, onTakePosition, featured }: Props) {
   const { colors } = useTheme();
   const status = toMarketStatus(rumor.status);
   const { teaPct, capPct } = marketOdds(rumor);
@@ -29,48 +31,67 @@ export default function MarketCard({ rumor, onPress, onTakePosition, featured, v
   const spark = rumor.oddsHistory.length >= 2 ? rumor.oddsHistory : placeholderSparkline(teaPct);
   const position = rumor.myChoice;
   const isOpen = status === 'ABERTO';
-  const showStats = canSeeMarketStats({ status: rumor.status, myChoice: position, viewerIsPro });
+  const yesProbability = Math.max(10, Math.min(90, teaPct)) / 100;
+  const noProbability = Math.max(10, Math.min(90, capPct)) / 100;
+  const displayedTeaPct = Math.round(yesProbability * 100);
+  const displayedCapPct = Math.round(noProbability * 100);
+  const yesOdds = offeredDecimalOdds(yesProbability);
+  const noOdds = offeredDecimalOdds(noProbability);
+  const displayedSourceCount = Math.max(rumor.sourceCount, rumor.sourceUrl ? 1 : 0);
+  const editorialImage = rumor.editorialImage ?? null;
 
   return (
-    <Pressable
-      onPress={() => onPress(rumor)}
-      accessibilityRole="button"
-      accessibilityLabel={rumor.summary}
-      style={[styles.card, { backgroundColor: colors.card, borderColor: featured ? colors.primary : colors.border }]}
-    >
+    <View style={[styles.card, { backgroundColor: colors.card, borderColor: featured ? colors.primary : colors.border }]}>
       {featured ? <View style={[styles.edge, { backgroundColor: colors.primary }]} /> : null}
+      <Pressable onPress={() => onPress(rumor)} accessibilityRole="button" accessibilityLabel={rumor.summary}>
+        {editorialImage ? <EditorialArtwork image={editorialImage} featured={featured} /> : null}
 
-      <View style={styles.topRow}>
-        <View style={styles.metaLeft}>
-          {featured ? <Text style={[styles.dayLabel, { color: colors.primary }]}>VIDDI DO DIA</Text> : null}
-          {rumor.updatesRumor ? (
-            <View style={[styles.updateChip, { backgroundColor: colors.primaryBg, borderColor: colors.primaryBorder }]}>
-              <Text style={[styles.updateChipText, { color: colors.primary }]}>🆕 ATUALIZAÇÃO</Text>
-            </View>
-          ) : null}
-          <StatusChip status={status} />
-          {isOpen && dl ? (
-            <View style={styles.deadline}>
-              <Feather name="clock" size={10} color={colors.faint} />
-              <Text style={[styles.deadlineText, { color: colors.faint }]}>fecha em {dl}</Text>
-            </View>
-          ) : null}
+        <View style={[styles.topRow, editorialImage ? styles.afterArtwork : styles.textFirstTop]}>
+          <View style={styles.metaLeft}>
+            <Text style={[styles.categoryKicker, { color: colors.primary }]}>{rumor.category?.trim() || 'Cultura pop'}</Text>
+            {featured ? <Text style={[styles.dayLabel, { color: colors.primary }]}>BABADO DO DIA</Text> : null}
+            {rumor.updatesRumor ? (
+              <View style={[styles.updateChip, { backgroundColor: colors.primaryBg, borderColor: colors.primaryBorder }]}>
+                <Text style={[styles.updateChipText, { color: colors.primary }]}>🆕 ATUALIZAÇÃO</Text>
+              </View>
+            ) : null}
+            <StatusChip status={status} />
+            {isOpen && dl ? (
+              <View style={styles.deadline}>
+                <Feather name="clock" size={10} color={colors.faint} />
+                <Text style={[styles.deadlineText, { color: colors.faint }]}>fecha em {dl}</Text>
+              </View>
+            ) : null}
+          </View>
+          <Sparkline data={spark} color={displayedTeaPct > 50 ? colors.tea : colors.cap} />
         </View>
-        {showStats ? <Sparkline data={spark} color={teaPct > 50 ? colors.tea : colors.cap} /> : null}
-      </View>
 
-      <Text style={[styles.headline, { color: colors.text }]}>{rumor.summary}</Text>
+        <Text style={[styles.headline, featured && styles.featuredHeadline, { color: colors.text }]}>{rumor.summary}</Text>
 
-      {showStats ? <OddsBar teaPct={teaPct} capPct={capPct} compact /> : <View style={[styles.statsLock, { backgroundColor: colors.raised, borderColor: colors.border }]}>
-        <Feather name="lock" size={12} color={colors.faint} />
-        <Text style={[styles.statsLockText, { color: colors.faint }]}>Palpite para ver odds e gráficos</Text>
-      </View>}
+        <OddsBar teaPct={displayedTeaPct} capPct={displayedCapPct} compact />
 
-      <View style={styles.bottomRow}>
-        <Text style={[styles.volume, { color: colors.faint }]}>
-          {showStats ? `${volume.toLocaleString('pt-BR')} palpites${rumor.sourceCount > 1 ? ` · ${rumor.sourceCount} fontes` : ''}` : 'estatísticas liberadas após o palpite'}
-        </Text>
-      </View>
+        {isOpen ? (
+          <View style={styles.marketGrid}>
+            <View style={[styles.marketSide, { backgroundColor: colors.teaBg, borderColor: colors.teaBorder }]}>
+              <Text style={[styles.marketLabel, { color: colors.tea }]}>VERDADE</Text>
+              <Text style={[styles.marketMetric, { color: colors.text }]}>Probabilidade: {displayedTeaPct}%</Text>
+              <Text style={[styles.marketMetric, { color: colors.text }]}>Retorno atual: {yesOdds.toFixed(2)}x</Text>
+            </View>
+            <View style={[styles.marketSide, { backgroundColor: colors.capBg, borderColor: colors.capBorder }]}>
+              <Text style={[styles.marketLabel, { color: colors.cap }]}>MENTIRA</Text>
+              <Text style={[styles.marketMetric, { color: colors.text }]}>Probabilidade: {displayedCapPct}%</Text>
+              <Text style={[styles.marketMetric, { color: colors.text }]}>Retorno atual: {noOdds.toFixed(2)}x</Text>
+            </View>
+          </View>
+        ) : null}
+
+        <View style={styles.bottomRow}>
+          <Text style={[styles.volume, { color: colors.faint }]}>
+            {`${volume.toLocaleString('pt-BR')} volume negociado${displayedSourceCount > 0 ? ` · ${displayedSourceCount} ${displayedSourceCount === 1 ? 'fonte' : 'fontes'}` : ''}`}
+          </Text>
+        </View>
+        <Text style={[styles.noCash, { color: colors.faint }]}>Moedas não têm valor em dinheiro.</Text>
+      </Pressable>
 
       {isOpen ? (
         <View style={styles.actions}>
@@ -79,23 +100,23 @@ export default function MarketCard({ rumor, onPress, onTakePosition, featured, v
               <Pressable
                 onPress={() => onTakePosition?.(rumor, 'true')}
                 accessibilityRole="button"
-                accessibilityLabel="Palpitar Verdade"
+                accessibilityLabel="Escolher Verdade"
                 style={[styles.posBtn, { backgroundColor: colors.teaBg, borderColor: colors.teaBorder }]}
               >
                 <View style={styles.posRow}>
                   <Icon name="verdade" color={colors.tea} size={15} />
-                  <Text style={[styles.posBtnText, { color: colors.tea }]}>Verdade{showStats ? ` ${teaPct}%` : ''}</Text>
+                  <Text style={[styles.posBtnText, { color: colors.tea }]}>Verdade</Text>
                 </View>
               </Pressable>
               <Pressable
                 onPress={() => onTakePosition?.(rumor, 'false')}
                 accessibilityRole="button"
-                accessibilityLabel="Palpitar Mentira"
+                accessibilityLabel="Escolher Mentira"
                 style={[styles.posBtn, { backgroundColor: colors.capBg, borderColor: colors.capBorder }]}
               >
                 <View style={styles.posRow}>
                   <Icon name="mentira" color={colors.cap} size={15} />
-                  <Text style={[styles.posBtnText, { color: colors.cap }]}>Mentira{showStats ? ` ${capPct}%` : ''}</Text>
+                  <Text style={[styles.posBtnText, { color: colors.cap }]}>Mentira</Text>
                 </View>
               </Pressable>
             </>
@@ -115,32 +136,41 @@ export default function MarketCard({ rumor, onPress, onTakePosition, featured, v
                   {position === 'true' ? 'Verdade' : 'Mentira'}
                 </Text>
               </View>
-              <Text style={[styles.lockedNote, { color: colors.faint }]}>Posição trancada 🔒</Text>
+              <Text style={[styles.lockedNote, { color: colors.faint }]}>Odds fixadas</Text>
             </View>
           )}
         </View>
       ) : null}
-    </Pressable>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  card: { borderRadius: radius.md, borderWidth: 1, padding: spacing.md, paddingBottom: spacing.md, overflow: 'hidden' },
+  card: { borderRadius: radius.sm, borderWidth: 1, padding: spacing.md, paddingBottom: spacing.md, overflow: 'hidden' },
   edge: { position: 'absolute', top: 0, left: 0, right: 0, height: 2 },
   topRow: { flexDirection: 'row', alignItems: 'flex-start', justifyContent: 'space-between', gap: spacing.sm, marginBottom: spacing.sm },
+  afterArtwork: { marginTop: spacing.md },
+  textFirstTop: { marginTop: 0 },
   metaLeft: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, flexWrap: 'wrap', flex: 1 },
+  categoryKicker: { fontFamily: fonts.monoBold, fontSize: 9, letterSpacing: 0.8, textTransform: 'uppercase' },
   dayLabel: { fontFamily: fonts.monoBold, fontSize: 9, letterSpacing: 0.9 },
   updateChip: { borderWidth: 1, borderRadius: radius.chip, paddingHorizontal: 6, paddingVertical: 2 },
   updateChipText: { fontFamily: fonts.monoSemi, fontSize: 9, letterSpacing: 0.4 },
   deadline: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   deadlineText: { fontFamily: fonts.mono, fontSize: 10 },
-  headline: { fontFamily: fonts.sansMed, fontSize: 13, lineHeight: 19, marginBottom: spacing.sm },
+  headline: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 16, lineHeight: 22, marginBottom: spacing.sm },
+  featuredHeadline: { fontSize: 19, lineHeight: 25 },
   statsLock: { borderWidth: 1, borderRadius: radius.sm, paddingVertical: spacing.sm, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: spacing.xs },
   statsLockText: { fontFamily: fonts.sansSemi, fontSize: 11 },
+  marketGrid: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.sm },
+  marketSide: { flex: 1, borderWidth: 1, borderRadius: radius.sm, padding: spacing.sm, gap: 2 },
+  marketLabel: { fontFamily: fonts.monoBold, fontSize: 10, letterSpacing: 0.4 },
+  marketMetric: { fontFamily: fonts.mono, fontSize: 10 },
   bottomRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: spacing.sm },
   volume: { fontFamily: fonts.mono, fontSize: 10 },
+  noCash: { fontFamily: fonts.sans, fontSize: 10, lineHeight: 14, marginTop: 3 },
   actions: { flexDirection: 'row', gap: spacing.sm, marginTop: spacing.md },
-  posBtn: { flex: 1, borderWidth: 1, borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center' },
+  posBtn: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: radius.sm, paddingVertical: spacing.sm, alignItems: 'center', justifyContent: 'center' },
   posRow: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   posBtnText: { fontFamily: fonts.sansSemi, fontSize: 12 },
   locked: { flex: 1, borderWidth: 1, borderRadius: radius.sm, paddingVertical: 7, paddingHorizontal: spacing.md, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },

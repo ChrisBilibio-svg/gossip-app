@@ -39,7 +39,7 @@ test('profile avatar migration exposes avatar on leaderboard and social repost f
 test('leaderboard comments and social lib contracts surface nullable avatars safely', () => {
   assert.match(leaderboardSource, /avatar:\s*string\s*\|\s*null/);
   assert.match(leaderboardSource, /avatar:\s*r\.avatar\s*\?\?\s*null/);
-  assert.match(leaderboardSource, /select\(\s*'id, handle, avatar, total_points/);
+  assert.match(leaderboardSource, /select\(\s*'id, handle, avatar, state_code, total_points/);
 
   assert.match(commentsSource, /avatar:\s*string\s*\|\s*null/);
   assert.match(commentsSource, /select\(\s*'id, handle, avatar'\s*\)/);

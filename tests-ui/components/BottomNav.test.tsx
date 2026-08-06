@@ -12,7 +12,7 @@ function renderNav(ui: React.ReactElement) {
 
 test('renders all five tabs', async () => {
   await renderNav(<BottomNav tab="feed" onChange={() => {}} />);
-  for (const label of ['Mercados', 'Palpites', 'Social', 'O Profeta', 'Perfil']) {
+  for (const label of ['A Coluna', 'Palpites', 'Social', 'O Profeta', 'Perfil']) {
     expect(screen.getByText(label)).toBeTruthy();
   }
 });
@@ -20,7 +20,7 @@ test('renders all five tabs', async () => {
 test('marks the active tab as selected for accessibility', async () => {
   await renderNav(<BottomNav tab="rank" onChange={() => {}} />);
   expect(screen.getByLabelText('O Profeta').props.accessibilityState).toMatchObject({ selected: true });
-  expect(screen.getByLabelText('Mercados').props.accessibilityState).toMatchObject({ selected: false });
+  expect(screen.getByLabelText('A Coluna').props.accessibilityState).toMatchObject({ selected: false });
 });
 
 test('reports the tapped tab via onChange', async () => {

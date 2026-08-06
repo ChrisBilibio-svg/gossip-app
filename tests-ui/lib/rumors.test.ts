@@ -61,6 +61,35 @@ describe('mapRumorRows', () => {
     expect(r.commentCount).toBe(4);
     expect(r.myChoice).toBe('true');
     expect(r.myReaction).toBe(1);
+    expect(r.editorialImage).toBeNull();
+  });
+
+  test('maps only complete trusted Pexels metadata', () => {
+    const complete = row({
+      editorial_image_url: 'https://images.pexels.com/photos/123/photo.jpeg',
+      editorial_image_alt: 'Imagem ilustrativa: palco de show.',
+      editorial_image_page_url: 'https://www.pexels.com/photo/stage-123/',
+      editorial_image_photographer: 'Foto Exemplo',
+      editorial_image_photographer_url: 'https://www.pexels.com/@foto-exemplo',
+      editorial_image_provider: 'pexels',
+      editorial_image_provider_id: '123',
+      editorial_image_descriptor: 'palco de show',
+      editorial_image_feature_date: '2026-08-05',
+    });
+    expect(mapRumorRows([complete])[0].editorialImage).toEqual({
+      url: 'https://images.pexels.com/photos/123/photo.jpeg',
+      alt: 'Imagem ilustrativa: palco de show.',
+      pageUrl: 'https://www.pexels.com/photo/stage-123/',
+      photographer: 'Foto Exemplo',
+      photographerUrl: 'https://www.pexels.com/@foto-exemplo',
+      provider: 'pexels',
+      providerId: '123',
+      descriptor: 'palco de show',
+      featureDate: '2026-08-05',
+    });
+
+    expect(mapRumorRows([{ ...complete, editorial_image_photographer: null }])[0].editorialImage).toBeNull();
+    expect(mapRumorRows([{ ...complete, editorial_image_url: 'https://evil.example/photo.jpeg' }])[0].editorialImage).toBeNull();
   });
 
   test('passes through VOID as a terminal no-verdict status', () => {

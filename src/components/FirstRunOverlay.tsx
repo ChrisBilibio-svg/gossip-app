@@ -20,8 +20,8 @@ const STEPS: { title: string; sub: string; rows: Row[] }[] = [
     title: 'Bem-vindo ao Viddi.',
     sub: 'O mercado de previsões do mundo pop brasileiro.',
     rows: [
-      { icon: '🍵', label: 'Verdade', desc: 'Você acredita que a fofoca é verdade. Toma posição de que vai ser confirmada.', tone: 'tea' },
-      { icon: '🧢', label: 'Mentira', desc: 'Você acha que é mentira. Toma posição de que vai ser desmentida.', tone: 'cap' },
+      { icon: 'V', label: 'Verdade', desc: 'Você acredita que a fofoca é verdade. Toma posição de que vai ser confirmada.', tone: 'tea' },
+      { icon: 'M', label: 'Mentira', desc: 'Você acha que é mentira. Toma posição de que vai ser desmentida.', tone: 'cap' },
     ],
   },
   {
@@ -83,7 +83,7 @@ export default function FirstRunOverlay() {
         <View style={styles.rows}>
           {current.rows.map((r) => (
             <View key={r.label} style={[styles.row, { backgroundColor: colors.card, borderColor: colors.border }]}>
-              <Text style={styles.rowIcon}>{r.icon}</Text>
+              <Text style={[styles.rowIcon, { color: colors[r.tone] }]}>{r.icon}</Text>
               <View style={{ flex: 1 }}>
                 <Text style={[styles.rowLabel, { color: colors[r.tone] }]}>{r.label}</Text>
                 <Text style={[styles.rowDesc, { color: colors.muted }]}>{r.desc}</Text>
@@ -119,8 +119,8 @@ const styles = StyleSheet.create({
   screen: { flex: 1, paddingHorizontal: spacing.xl, paddingTop: 56, paddingBottom: spacing.xl },
   dots: { flexDirection: 'row', gap: 6, marginBottom: spacing.xxl },
   dot: { height: 3, flex: 1, borderRadius: 2 },
-  brand: { fontFamily: fonts.sansBold, fontSize: 13, letterSpacing: 1, marginBottom: spacing.lg },
-  title: { fontFamily: fonts.sansBold, fontSize: 22, letterSpacing: -0.4, lineHeight: 29, marginBottom: 6 },
+  brand: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 16, letterSpacing: 0.5, marginBottom: spacing.lg },
+  title: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 24, letterSpacing: -0.4, lineHeight: 31, marginBottom: 6 },
   sub: { fontFamily: fonts.sans, fontSize: 13, lineHeight: 19, marginBottom: spacing.xl },
   rows: { flex: 1, gap: spacing.md },
   row: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start', padding: spacing.md, borderWidth: 1, borderRadius: radius.sm + 2 },

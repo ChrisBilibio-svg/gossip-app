@@ -33,7 +33,7 @@ export default function Icon({ name, size = 16, color, strokeWidth }: Props) {
   const sw = strokeWidth ?? Math.min(5, Math.max(2, 100 / size));
   const S: StrokeProps = { fill: 'none', stroke: color, strokeWidth: sw, strokeLinejoin: 'round', strokeLinecap: 'round' };
   return (
-    <Svg width={size} height={size} viewBox="0 0 48 48" accessibilityElementsHidden>
+    <Svg width={size} height={size} viewBox="0 0 48 48" accessible={false} aria-hidden>
       {glyph(name, color, sw, S)}
     </Svg>
   );

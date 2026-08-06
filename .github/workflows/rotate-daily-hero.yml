@@ -1,0 +1,29 @@
+name: Rotate daily hero (fofoca do dia)
+
+on:
+  schedule:
+    - cron: '45 11 * * *' # 11:45 UTC = 08:45 Brasília, after ingest + resolve-deadlines
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  rotate-hero:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Rotate the featured "fofoca do dia" market
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+        run: |
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then echo "::notice::Supabase credentials not configured; skipping this run."; exit 0; fi
+          node scripts/rotate-daily-hero.mjs --live

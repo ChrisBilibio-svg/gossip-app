@@ -15,6 +15,9 @@ import { AVATARS, DEFAULT_AVATAR, getAvatar, setAvatar, type Avatar as AvatarVal
 import { nextTier, tierForPoints } from '../components/Tier';
 import { Skeleton } from '../components/Skeleton';
 import { buildSupportMailto, SUPPORT_EMAIL } from '../lib/supportContact';
+import WalletPanel from '../components/WalletPanel';
+import CoinStoreButton from '../components/CoinStoreButton';
+import ExchangeTradingPreview from '../components/ExchangeTradingPreview';
 
 const LADDER = ['Aprendiz', 'Fofoqueiro', 'Vidente', 'Profeta', 'Lenda'];
 
@@ -37,6 +40,7 @@ export default function ProfileScreen({ onOpenAccount, onDeleted }: Props) {
   const [pickerOpen, setPickerOpen] = useState(false);
   const [avatar, setAvatarState] = useState<AvatarValue>(DEFAULT_AVATAR);
   const [supportMessage, setSupportMessage] = useState<string | null>(null);
+  const [tradingPreviewOpen, setTradingPreviewOpen] = useState(false);
 
   useEffect(() => {
     let active = true;
@@ -196,6 +200,8 @@ export default function ProfileScreen({ onOpenAccount, onDeleted }: Props) {
           <Text style={[styles.panelNote, { color: colors.faint }]}>VOID é push: não mexe na precisão nem na sequência.</Text>
         </View>
 
+        <WalletPanel onOpenPro={() => setProOpen(true)} />
+
         {/* Viddi Pro */}
         <Pressable
           onPress={() => setProOpen(true)}
@@ -244,6 +250,24 @@ export default function ProfileScreen({ onOpenAccount, onDeleted }: Props) {
             </View>
             <Feather name="chevron-right" size={14} color={colors.faint} />
           </Pressable>
+
+          {__DEV__ ? (
+            <Pressable
+              onPress={() => setTradingPreviewOpen(true)}
+              style={[styles.settingRow, { borderBottomColor: colors.border }]}
+              accessibilityRole="button"
+              accessibilityLabel="Preview de negociação"
+            >
+              <View style={styles.settingLeft}>
+                <Feather name="trending-up" size={14} color={colors.gold} />
+                <View>
+                  <Text style={[styles.settingLabel, { color: colors.text }]}>🧪 Negociação (preview)</Text>
+                  <Text style={[styles.settingSub, { color: colors.faint }]}>Comprar / vender palpites — demo do exchange</Text>
+                </View>
+              </View>
+              <Feather name="chevron-right" size={14} color={colors.faint} />
+            </Pressable>
+          ) : null}
 
           <Pressable
             onPress={() => setKeywordsOpen(true)}
@@ -343,6 +367,7 @@ export default function ProfileScreen({ onOpenAccount, onDeleted }: Props) {
       <ProSheet visible={proOpen} onClose={() => setProOpen(false)} />
       <HelpSheet visible={helpOpen} onClose={() => setHelpOpen(false)} />
       <KeywordsSheet visible={keywordsOpen} onClose={() => setKeywordsOpen(false)} />
+      <ExchangeTradingPreview visible={tradingPreviewOpen} onClose={() => setTradingPreviewOpen(false)} />
       <AvatarPicker
         visible={pickerOpen}
         current={avatar}
@@ -361,6 +386,7 @@ export default function ProfileScreen({ onOpenAccount, onDeleted }: Props) {
     return (
       <View style={[styles.header, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
         <Text style={[styles.title, { color: colors.text }]}>Perfil</Text>
+        <CoinStoreButton compact />
       </View>
     );
   }
@@ -387,8 +413,8 @@ function TrackRecordStat({ value, label, color }: { value: string; label: string
 }
 
 const styles = StyleSheet.create({
-  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1 },
-  title: { fontFamily: fonts.sansBold, fontSize: 17 },
+  header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  title: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 20 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
   body: { padding: spacing.lg },
   idRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, marginBottom: spacing.lg },

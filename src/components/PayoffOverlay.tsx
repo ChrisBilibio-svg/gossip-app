@@ -47,7 +47,7 @@ function Particle({ delay }: { delay: number }) {
 function StoryCard({ points, rank, handle }: { points: number; rank: number | null; handle: string | null }) {
   return (
     <View style={cardStyles.card}>
-      <Text style={cardStyles.cup}>🍵</Text>
+      <Text style={cardStyles.cup}>V.</Text>
       <Text style={cardStyles.headline}>EU ACERTEI</Text>
       <Text style={cardStyles.points}>+{points.toLocaleString('pt-BR')}</Text>
       <Text style={cardStyles.ptsLabel}>pontos</Text>
@@ -187,7 +187,7 @@ const styles = StyleSheet.create({
   particleLayer: { position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 },
   particle: { position: 'absolute', top: 0, width: 5, height: 5, borderRadius: 3 },
   statusLabel: { fontFamily: fonts.monoBold, fontSize: 10, letterSpacing: 1.5, marginBottom: spacing.md },
-  title: { fontFamily: fonts.sansExtra, fontSize: 28, letterSpacing: -0.4, textAlign: 'center', marginBottom: spacing.sm },
+  title: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 30, letterSpacing: -0.4, textAlign: 'center', marginBottom: spacing.sm },
   points: { fontFamily: fonts.monoBold, fontSize: 56, lineHeight: 60 },
   ptsLabel: { fontFamily: fonts.mono, fontSize: 13, marginTop: 2 },
   rank: { fontFamily: fonts.monoSemi, fontSize: 13, marginTop: spacing.xl },

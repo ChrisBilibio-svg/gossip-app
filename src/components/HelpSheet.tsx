@@ -16,8 +16,8 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
   {
     title: 'O palpite',
     rows: [
-      { icon: '🍵', label: 'Verdade', desc: 'Você acha que a fofoca é verdade — toma posição de que vai ser confirmada.', tone: 'tea' },
-      { icon: '🧢', label: 'Mentira', desc: 'Você acha que é mentira — toma posição de que vai ser desmentida.', tone: 'cap' },
+      { icon: 'V', label: 'Verdade', desc: 'Você acha que a fofoca é verdade — toma posição de que vai ser confirmada.', tone: 'tea' },
+      { icon: 'M', label: 'Mentira', desc: 'Você acha que é mentira — toma posição de que vai ser desmentida.', tone: 'cap' },
       { icon: '🔒', label: 'Posição trancada', desc: 'Cada palpite é único e definitivo. Depois de tomar posição, não dá pra trocar.', tone: 'muted' },
     ],
   },
@@ -44,7 +44,7 @@ const SECTIONS: { title: string; rows: Row[] }[] = [
   },
 ];
 
-/** In-app "Como funciona" — a persistent FAQ for TEA/CAP, resolution, VOID, points. */
+/** In-app "Como funciona" — a persistent FAQ for predictions, resolution, VOID, points. */
 export default function HelpSheet({ visible, onClose }: { visible: boolean; onClose: () => void }) {
   const { colors } = useTheme();
   return (
@@ -64,7 +64,7 @@ export default function HelpSheet({ visible, onClose }: { visible: boolean; onCl
                 <Text style={[styles.sectionTitle, { color: colors.faint }]}>{section.title.toUpperCase()}</Text>
                 {section.rows.map((r) => (
                   <View key={r.label} style={[styles.row, { backgroundColor: colors.raised, borderColor: colors.border }]}>
-                    <Text style={styles.icon}>{r.icon}</Text>
+                    <Text style={[styles.icon, { color: colors[r.tone] }]}>{r.icon}</Text>
                     <View style={{ flex: 1 }}>
                       <Text style={[styles.rowLabel, { color: colors[r.tone] }]}>{r.label}</Text>
                       <Text style={[styles.rowDesc, { color: colors.muted }]}>{r.desc}</Text>
@@ -85,7 +85,7 @@ const styles = StyleSheet.create({
   backdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.6)', justifyContent: 'flex-end' },
   sheet: { borderTopLeftRadius: radius.lg, borderTopRightRadius: radius.lg, maxHeight: '88%', paddingTop: spacing.md },
   header: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: spacing.xl, paddingBottom: spacing.md },
-  title: { fontFamily: fonts.sansBold, fontSize: 18 },
+  title: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 21 },
   body: { paddingHorizontal: spacing.xl },
   sectionTitle: { fontFamily: fonts.monoSemi, fontSize: 10, letterSpacing: 1, marginBottom: spacing.sm },
   row: { flexDirection: 'row', gap: spacing.md, alignItems: 'flex-start', padding: spacing.md, borderWidth: 1, borderRadius: radius.sm + 2, marginBottom: spacing.sm },

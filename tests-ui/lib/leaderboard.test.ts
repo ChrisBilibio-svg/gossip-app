@@ -36,12 +36,13 @@ test('maps RPC rows to the camelCase LeaderRow shape including rankDelta', async
   });
 
   const rows = await getLeaderboard(10);
-  expect(mockRpc).toHaveBeenCalledWith('get_leaderboard', { p_limit: 10 });
+  expect(mockRpc).toHaveBeenCalledWith('get_leaderboard', { p_limit: 10, p_scope: 'world', p_state_code: null });
   expect(rows).toEqual([
     {
       id: 'u1',
       handle: 'anitta',
       avatar: null,
+      stateCode: null,
       totalPoints: 1200,
       correctCount: 30,
       currentStreak: 0,

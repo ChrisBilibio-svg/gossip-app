@@ -18,6 +18,18 @@ export interface UpdatedRumorReference {
   summary: string;
 }
 
+export interface EditorialImage {
+  url: string;
+  alt: string;
+  pageUrl: string;
+  photographer: string;
+  photographerUrl: string;
+  provider: 'pexels';
+  providerId: string;
+  descriptor: string;
+  featureDate: string;
+}
+
 export interface Rumor {
   id: string;
   summary: string;
@@ -51,6 +63,8 @@ export interface Rumor {
   /** prior market/story that this rumor clearly updates, when present */
   updatesRumor: UpdatedRumorReference | null;
   myReaction: ReactionValue | null;
+  /** Complete, attributed stock artwork. Partial/missing metadata maps to null. */
+  editorialImage?: EditorialImage | null;
 }
 
 export interface EvidenceSourceRow {
@@ -89,6 +103,15 @@ export interface RumorRow {
   odds_history?: number[] | null;
   my_choice: Choice | null;
   my_reaction: ReactionValue | null;
+  editorial_image_url?: string | null;
+  editorial_image_alt?: string | null;
+  editorial_image_page_url?: string | null;
+  editorial_image_photographer?: string | null;
+  editorial_image_photographer_url?: string | null;
+  editorial_image_provider?: string | null;
+  editorial_image_provider_id?: string | null;
+  editorial_image_descriptor?: string | null;
+  editorial_image_feature_date?: string | null;
 }
 
 export interface FeedResult {
@@ -104,6 +127,9 @@ const RUMOR_SELECT_WITHOUT_OPTIONAL_UPDATES =
 
 const RUMOR_SELECT_WITHOUT_COMMENT_COUNT =
   'id, summary, article, category, status, is_hero, source_url, prediction_deadline, resolution_policy, required_source_count, created_at, resolved_at, seed_true, seed_false, true_votes, false_votes, like_count, dislike_count, rumor_evidence_sources(id, source_url, source_label, supports_outcome, note)';
+
+const EDITORIAL_IMAGE_SELECT =
+  'id, editorial_image_url, editorial_image_alt, editorial_image_page_url, editorial_image_photographer, editorial_image_photographer_url, editorial_image_provider, editorial_image_provider_id, editorial_image_descriptor, editorial_image_feature_date';
 
 function isMissingOptionalUpdateError(error: unknown): boolean {
   const maybe = error as { code?: string; message?: string } | null | undefined;
@@ -143,7 +169,8 @@ export async function fetchFeed(): Promise<FeedResult> {
     return { rumors: [], error: String(fallbackError.message ?? 'Feed unavailable') };
   }
 
-  return { rumors: mapRumorRows((data ?? []) as RumorRow[]), error: null };
+  const rows = await attachEditorialImages((data ?? []) as RumorRow[]);
+  return { rumors: mapRumorRows(rows), error: null };
 }
 
 async function fetchFeedLegacy(): Promise<FeedResult> {
@@ -163,7 +190,8 @@ async function fetchFeedLegacy(): Promise<FeedResult> {
   const rows = (data ?? []) as unknown as RumorRow[];
   const rowsWithMine = await attachCallerState(rows);
 
-  return { rumors: mapRumorRows(rowsWithMine), error: null };
+  const rowsWithImages = await attachEditorialImages(rowsWithMine);
+  return { rumors: mapRumorRows(rowsWithImages), error: null };
 }
 
 async function fetchFeedLegacyWithoutOptionalUpdates(): Promise<FeedResult> {
@@ -182,7 +210,8 @@ async function fetchFeedLegacyWithoutOptionalUpdates(): Promise<FeedResult> {
   const rows = (data ?? []) as unknown as RumorRow[];
   const rowsWithMine = await attachCallerState(rows);
 
-  return { rumors: mapRumorRows(rowsWithMine), error: null };
+  const rowsWithImages = await attachEditorialImages(rowsWithMine);
+  return { rumors: mapRumorRows(rowsWithImages), error: null };
 }
 
 async function fetchFeedLegacyWithoutCommentCount(): Promise<FeedResult> {
@@ -200,7 +229,8 @@ async function fetchFeedLegacyWithoutCommentCount(): Promise<FeedResult> {
   const rows = (data ?? []) as unknown as RumorRow[];
   const rowsWithMine = await attachCallerState(rows);
 
-  return { rumors: mapRumorRows(rowsWithMine), error: null };
+  const rowsWithImages = await attachEditorialImages(rowsWithMine);
+  return { rumors: mapRumorRows(rowsWithImages), error: null };
 }
 
 export async function getRumorById(id: string): Promise<Rumor | null> {
@@ -219,7 +249,8 @@ export async function getRumorById(id: string): Promise<Rumor | null> {
   if (error || !data) return null;
 
   const rowsWithMine = await attachCallerState([data as unknown as RumorRow]);
-  const rowsWithOdds = await attachOddsHistory(rowsWithMine);
+  const rowsWithImages = await attachEditorialImages(rowsWithMine, { currentDateOnly: false });
+  const rowsWithOdds = await attachOddsHistory(rowsWithImages);
   return mapRumorRows(rowsWithOdds)[0] ?? null;
 }
 
@@ -236,7 +267,8 @@ async function getRumorByIdWithoutOptionalUpdates(id: string): Promise<Rumor | n
   if (error || !data) return null;
 
   const rowsWithMine = await attachCallerState([data as unknown as RumorRow]);
-  const rowsWithOdds = await attachOddsHistory(rowsWithMine);
+  const rowsWithImages = await attachEditorialImages(rowsWithMine, { currentDateOnly: false });
+  const rowsWithOdds = await attachOddsHistory(rowsWithImages);
   return mapRumorRows(rowsWithOdds)[0] ?? null;
 }
 
@@ -252,7 +284,8 @@ async function getRumorByIdWithoutCommentCount(id: string): Promise<Rumor | null
   if (error || !data) return null;
 
   const rowsWithMine = await attachCallerState([data as unknown as RumorRow]);
-  const rowsWithOdds = await attachOddsHistory(rowsWithMine);
+  const rowsWithImages = await attachEditorialImages(rowsWithMine, { currentDateOnly: false });
+  const rowsWithOdds = await attachOddsHistory(rowsWithImages);
   return mapRumorRows(rowsWithOdds)[0] ?? null;
 }
 
@@ -287,6 +320,87 @@ async function attachOddsHistory(rows: RumorRow[]): Promise<RumorRow[]> {
   );
 
   return enriched;
+}
+
+function currentSaoPauloDate(now = new Date()): string {
+  const parts = new Intl.DateTimeFormat('en-CA', {
+    timeZone: 'America/Sao_Paulo',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(now);
+  const value = (type: string) => parts.find((part) => part.type === type)?.value;
+  return `${value('year')}-${value('month')}-${value('day')}`;
+}
+
+/**
+ * Enriches RPC/legacy rows without making the new migration a feed dependency.
+ * A missing column/schema-cache error simply returns the original rows.
+ */
+export async function attachEditorialImages(
+  rows: RumorRow[],
+  { currentDateOnly = true }: { currentDateOnly?: boolean } = {},
+): Promise<RumorRow[]> {
+  if (!rows.length) return rows;
+
+  let query = supabase
+    .from('rumors')
+    .select(EDITORIAL_IMAGE_SELECT)
+    .in('id', rows.map((row) => row.id));
+  if (currentDateOnly) query = query.eq('editorial_image_feature_date', currentSaoPauloDate());
+
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 3_000);
+  try {
+    const { data, error } = await query.abortSignal(controller.signal);
+    if (error || !Array.isArray(data)) return rows;
+    const imagesById = new Map((data as unknown as RumorRow[]).map((row) => [row.id, row]));
+    return rows.map((row) => ({ ...row, ...(imagesById.get(row.id) ?? {}) }));
+  } catch {
+    return rows;
+  } finally {
+    clearTimeout(timeout);
+  }
+}
+
+function isTrustedEditorialUrl(value: string, kind: 'image' | 'pexels'): boolean {
+  try {
+    const url = new URL(value);
+    if (url.protocol !== 'https:') return false;
+    if (kind === 'image') return url.hostname === 'images.pexels.com';
+    return url.hostname === 'pexels.com' || url.hostname === 'www.pexels.com';
+  } catch {
+    return false;
+  }
+}
+
+export function mapEditorialImage(row: RumorRow): EditorialImage | null {
+  const values = [
+    row.editorial_image_url,
+    row.editorial_image_alt,
+    row.editorial_image_page_url,
+    row.editorial_image_photographer,
+    row.editorial_image_photographer_url,
+    row.editorial_image_provider_id,
+    row.editorial_image_descriptor,
+    row.editorial_image_feature_date,
+  ];
+  if (row.editorial_image_provider !== 'pexels' || values.some((value) => typeof value !== 'string' || !value.trim())) return null;
+  if (!isTrustedEditorialUrl(row.editorial_image_url!, 'image')
+    || !isTrustedEditorialUrl(row.editorial_image_page_url!, 'pexels')
+    || !isTrustedEditorialUrl(row.editorial_image_photographer_url!, 'pexels')) return null;
+
+  return {
+    url: row.editorial_image_url!,
+    alt: row.editorial_image_alt!,
+    pageUrl: row.editorial_image_page_url!,
+    photographer: row.editorial_image_photographer!,
+    photographerUrl: row.editorial_image_photographer_url!,
+    provider: 'pexels',
+    providerId: row.editorial_image_provider_id!,
+    descriptor: row.editorial_image_descriptor!,
+    featureDate: row.editorial_image_feature_date!,
+  };
 }
 
 export function mapRumorRows(rows: RumorRow[]): Rumor[] {
@@ -324,6 +438,7 @@ export function mapRumorRows(rows: RumorRow[]): Rumor[] {
         ? { id: r.updates_rumor.id, summary: r.updates_rumor.summary }
         : null,
     myReaction: r.my_reaction ?? null,
+    editorialImage: mapEditorialImage(r),
   }));
 }
 

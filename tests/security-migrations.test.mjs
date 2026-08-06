@@ -30,6 +30,26 @@ const moderationAuditMigration = readFileSync(new URL('../supabase/migrations/00
 const socialRepostRepliesMigration = readFileSync(new URL('../supabase/migrations/0027_social_repost_replies.sql', import.meta.url), 'utf8');
 const hybridResolutionMigration = readFileSync(new URL('../supabase/migrations/0028_hybrid_resolution_model.sql', import.meta.url), 'utf8');
 const commentGuidelineMigration = readFileSync(new URL('../supabase/migrations/0029_comment_guideline_insert_guard.sql', import.meta.url), 'utf8');
+const editorialImagesMigration = readFileSync(new URL('../supabase/migrations/0064_featured_category_editorial_images.sql', import.meta.url), 'utf8');
+
+test('editorial image migration enforces complete attributed metadata and one winner per category/day', () => {
+  assert.match(editorialImagesMigration, /num_nonnulls\s*\([\s\S]*\)\s+in\s*\(\s*0\s*,\s*9\s*\)/i);
+  assert.match(editorialImagesMigration, /editorial_image_provider\s*=\s*'pexels'/i);
+  assert.match(editorialImagesMigration, /create\s+unique\s+index[\s\S]*lower\s*\(\s*translate\s*\(\s*btrim\s*\(\s*category\s*\)[\s\S]*editorial_image_feature_date/i);
+});
+
+test('editorial assignment RPC is atomic, eligible-only, and service-role-only', () => {
+  assert.match(editorialImagesMigration, /create\s+or\s+replace\s+function\s+service_assign_daily_editorial_image/i);
+  assert.match(editorialImagesMigration, /for\s+update/i);
+  assert.match(editorialImagesMigration, /pg_advisory_xact_lock\s*\(/i);
+  assert.match(editorialImagesMigration, /v_target\.status::text\s*<>\s*'speculated'/i);
+  assert.match(editorialImagesMigration, /publish_at\s+at\s+time\s+zone\s+'America\/Sao_Paulo'[\s\S]*p_feature_date/i);
+  assert.match(editorialImagesMigration, /order\s+by\s+r\.publish_at\s+desc[\s\S]*v_newest_id\s+is\s+distinct\s+from\s+p_rumor_id/i);
+  assert.match(editorialImagesMigration, /update\s+rumors[\s\S]*editorial_image_url\s*=\s*null[\s\S]*update\s+rumors[\s\S]*editorial_image_provider\s*=\s*'pexels'/i);
+  assert.match(editorialImagesMigration, /revoke\s+all[\s\S]*from\s+anon,\s*authenticated/i);
+  assert.match(editorialImagesMigration, /grant\s+execute[\s\S]*to\s+service_role/i);
+  assert.doesNotMatch(editorialImagesMigration, /create\s+or\s+replace\s+function\s+(get_feed|search_rumors)/i);
+});
 
 test('place_bet migration blocks bets on draft rumors', () => {
   assert.match(placeBetDraftGuardMigration, /create\s+or\s+replace\s+function\s+place_bet\s*\(/i);

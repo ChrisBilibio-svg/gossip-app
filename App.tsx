@@ -76,7 +76,7 @@ function Root() {
         ) : tab === 'social' ? (
           <SocialScreen />
         ) : tab === 'bets' ? (
-          <MyBetsScreen onWinPress={(b) => setPayoffPoints(b.pointsAwarded ?? 0)} />
+          <MyBetsScreen />
         ) : tab === 'rank' ? (
           <LeaderboardScreen />
         ) : (

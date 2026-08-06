@@ -6,17 +6,19 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
  * to OTHER users (leaderboard/comments) needs a backend `profiles.avatar`
  * column — see backlog handoff.
  */
-export const AVATARS = ['🔮', '🍵', '🧢', '👀', '🔥', '👑', '⭐', '🎭', '✨', '👻', '🛸', '🃏'] as const;
+export const AVATARS = ['🔮', '👀', '🔥', '👑', '⭐', '🎭', '✨', '👻', '🛸', '🃏', '📰', '💬'] as const;
 
 export type Avatar = (typeof AVATARS)[number];
 
-export const DEFAULT_AVATAR: Avatar = '🍵';
+export const DEFAULT_AVATAR: Avatar = '🔮';
 
 const KEY = 'viddi.avatar';
 
 export async function getAvatar(): Promise<Avatar | null> {
   try {
     const v = await AsyncStorage.getItem(KEY);
+    if (v === '🍵') return '📰';
+    if (v === '🧢') return '💬';
     return v && (AVATARS as readonly string[]).includes(v) ? (v as Avatar) : null;
   } catch {
     return null;

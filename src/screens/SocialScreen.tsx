@@ -233,7 +233,7 @@ function ConvictionBar({ level }: { level: number }) {
 
 const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1 },
-  title: { fontFamily: fonts.sansBold, fontSize: 17 },
+  title: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 20 },
   subtitle: { fontFamily: fonts.sans, fontSize: 11, marginTop: 2, marginBottom: spacing.md },
   segment: { flexDirection: 'row', borderWidth: 1, borderRadius: radius.sm, padding: 3 },
   segBtn: { flex: 1, paddingVertical: 6, borderRadius: 6, alignItems: 'center' },

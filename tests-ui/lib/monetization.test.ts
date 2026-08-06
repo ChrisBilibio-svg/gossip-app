@@ -56,7 +56,7 @@ test('feed native ad spacing keeps the first screen product-only', () => {
 });
 
 test('guardrails keep monetization away from scoring and truth', () => {
-  expect(AD_IMPLEMENTATION_GUARDRAILS.join(' ')).toMatch(/never affect TEA\/CAP\/VOID/);
+  expect(AD_IMPLEMENTATION_GUARDRAILS.join(' ')).toMatch(/never affect Verdade\/Mentira\/VOID/);
   expect(AD_IMPLEMENTATION_GUARDRAILS.join(' ')).toMatch(/Pro users are ad-free/);
   expect(AD_IMPLEMENTATION_GUARDRAILS.join(' ')).toMatch(/pre-bet odds/);
   expect(AD_IMPLEMENTATION_GUARDRAILS.join(' ')).toMatch(/never pay-to-win/);

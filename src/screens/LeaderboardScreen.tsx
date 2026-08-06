@@ -1,22 +1,31 @@
 import { useCallback, useEffect, useState } from 'react';
 import { Feather } from '@expo/vector-icons';
-import { ActivityIndicator, FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
+import { FlatList, Pressable, RefreshControl, StyleSheet, Text, View } from 'react-native';
 
 import { useTheme } from '../theme/ThemeProvider';
 import { fonts, radius, spacing } from '../theme/tokens';
-import { getLeaderboard, type LeaderRow } from '../lib/leaderboard';
+import { getLeaderboard, getMyLeaderboardLocation, type LeaderRow, type LeaderboardLocation } from '../lib/leaderboard';
 import { supabase } from '../lib/supabase';
 import { tierForPoints } from '../components/Tier';
 import { Skeleton } from '../components/Skeleton';
 import GroupsTab from '../components/GroupsTab';
 import Avatar from '../components/icons/Avatar';
 import Icon from '../components/icons/Icon';
+import CoinStoreButton from '../components/CoinStoreButton';
 
 type View2 = 'global' | 'groups';
+type LeaderboardScopeTab = 'state' | 'world';
 
 function accuracy(r: LeaderRow): string {
   if (r.resolvedCount === 0) return '—';
   return `${Math.round((r.correctCount / r.resolvedCount) * 100)}%`;
+}
+
+function scopeSubtitle(view: View2, scope: LeaderboardScopeTab, location: LeaderboardLocation): string {
+  if (view === 'groups') return 'Ligas privadas com seus amigos';
+  if (scope === 'state' && location.stateCode) return `Ranking do seu estado · ${location.stateCode}`;
+  if (scope === 'state') return 'Ranking mundial até você definir seu estado';
+  return 'Ranking mundial · histórico ponderado por acertos';
 }
 
 export default function LeaderboardScreen() {
@@ -25,13 +34,19 @@ export default function LeaderboardScreen() {
   const [meId, setMeId] = useState<string | null>(null);
   const [loading, setLoading] = useState(true);
   const [view, setView] = useState<View2>('global');
+  const [leaderboardScope, setLeaderboardScope] = useState<LeaderboardScopeTab>('state');
+  const [leaderboardLocation, setLeaderboardLocation] = useState<LeaderboardLocation>({ countryCode: null, stateCode: null });
 
   const load = useCallback(async () => {
-    const [{ data: u }, lb] = await Promise.all([supabase.auth.getUser(), getLeaderboard()]);
+    setLoading(true);
+    const [{ data: u }, location] = await Promise.all([supabase.auth.getUser(), getMyLeaderboardLocation()]);
+    const activeScope = leaderboardScope === 'state' && !location.stateCode ? 'world' : leaderboardScope;
+    const lb = await getLeaderboard({ scope: activeScope, stateCode: location.stateCode });
     setMeId(u.user?.id ?? null);
+    setLeaderboardLocation(location);
     setRows(lb);
     setLoading(false);
-  }, []);
+  }, [leaderboardScope]);
 
   useEffect(() => {
     load();
@@ -39,10 +54,15 @@ export default function LeaderboardScreen() {
 
   const Header = (
     <View style={[styles.header, { backgroundColor: colors.bg, borderBottomColor: colors.border }]}>
-      <Text style={[styles.title, { color: colors.text }]}>O Profeta</Text>
-      <Text style={[styles.subtitle, { color: colors.faint }]}>
-        {view === 'groups' ? 'Ligas privadas com seus amigos' : 'Ranking · histórico ponderado por acertos'}
-      </Text>
+      <View style={styles.headerTop}>
+        <View style={{ flex: 1 }}>
+          <Text style={[styles.title, { color: colors.text }]}>O Profeta</Text>
+          <Text style={[styles.subtitle, { color: colors.faint }]}>
+            {scopeSubtitle(view, leaderboardScope, leaderboardLocation)}
+          </Text>
+        </View>
+        <CoinStoreButton compact />
+      </View>
       <View style={[styles.segment, { backgroundColor: colors.card, borderColor: colors.border }]}>
         {(['global', 'groups'] as View2[]).map((v) => {
           const active = view === v;
@@ -55,12 +75,34 @@ export default function LeaderboardScreen() {
               style={[styles.segBtn, active && { backgroundColor: colors.raised }]}
             >
               <Text style={[styles.segText, { color: active ? colors.text : colors.faint, fontFamily: active ? fonts.sansSemi : fonts.sans }]}>
-                {v === 'global' ? '🌎 Geral' : '👯 Grupos'}
+                {v === 'global' ? '🏆 Ranking' : '👯 Grupos'}
               </Text>
             </Pressable>
           );
         })}
       </View>
+      {view === 'global' ? (
+        <View style={[styles.scopeSegment, { backgroundColor: colors.card, borderColor: colors.border }]}>
+          {(['state', 'world'] as LeaderboardScopeTab[]).map((scope) => {
+            const active = leaderboardScope === scope;
+            const disabled = scope === 'state' && !leaderboardLocation.stateCode;
+            return (
+              <Pressable
+                key={scope}
+                onPress={() => setLeaderboardScope(scope)}
+                accessibilityRole="tab"
+                accessibilityState={{ selected: active, disabled }}
+                accessibilityLabel={scope === 'state' ? 'Ranking do estado' : 'Ranking mundial'}
+                style={[styles.scopeBtn, active && { backgroundColor: colors.raised }]}
+              >
+                <Text style={[styles.scopeText, { color: active ? colors.text : colors.faint, fontFamily: active ? fonts.sansSemi : fonts.sans }]}>
+                  {scope === 'state' ? `📍 Estado${leaderboardLocation.stateCode ? ` ${leaderboardLocation.stateCode}` : ''}` : '🌎 Mundo'}
+                </Text>
+              </Pressable>
+            );
+          })}
+        </View>
+      ) : null}
     </View>
   );
 
@@ -119,14 +161,17 @@ export default function LeaderboardScreen() {
           <View style={styles.zeroWrap}>
             <Icon name="trophy" color={colors.gold} size={34} />
             <Text style={[styles.zeroTitle, { color: colors.text }]}>Ninguém no ranking ainda</Text>
-            <Text style={[styles.zeroSub, { color: colors.faint }]}>Acerte uma fofoca e seja o primeiro a virar O Profeta.</Text>
+            <Text style={[styles.zeroSub, { color: colors.faint }]}>
+              {leaderboardScope === 'state' && leaderboardLocation.stateCode
+                ? 'Acerte uma fofoca e seja o primeiro profeta do seu estado.'
+                : 'Acerte uma fofoca e seja o primeiro a virar O Profeta.'}
+            </Text>
           </View>
         }
         renderItem={({ item, index }) => {
           const rank = item.rank || index + 1;
           const me = item.id === meId;
           const top3 = rank <= 3;
-          const accent = top3 ? colors.gold : me ? colors.primary : colors.text;
           return (
             <View
               style={[
@@ -150,7 +195,7 @@ export default function LeaderboardScreen() {
                   ) : null}
                 </View>
                 <Text style={[styles.tier, { color: top3 ? colors.gold : colors.muted }]}>
-                  {tierForPoints(item.totalPoints).name}
+                  {tierForPoints(item.totalPoints).name}{leaderboardScope === 'world' && item.stateCode ? ` · ${item.stateCode}` : ''}
                 </Text>
               </View>
               <Text style={[styles.pts, { color: top3 ? colors.gold : colors.text }]}>
@@ -181,11 +226,15 @@ function Delta({ delta }: { delta: number | null }) {
 
 const styles = StyleSheet.create({
   header: { paddingHorizontal: spacing.lg, paddingTop: spacing.md, paddingBottom: spacing.md, borderBottomWidth: 1 },
-  title: { fontFamily: fonts.sansBold, fontSize: 17 },
+  headerTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: spacing.md },
+  title: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 20 },
   subtitle: { fontFamily: fonts.sans, fontSize: 11, marginTop: 2 },
   segment: { flexDirection: 'row', borderWidth: 1, borderRadius: radius.sm, padding: 3, marginTop: spacing.md },
+  scopeSegment: { flexDirection: 'row', borderWidth: 1, borderRadius: radius.sm, padding: 3, marginTop: spacing.xs },
   segBtn: { flex: 1, paddingVertical: 6, borderRadius: 6, alignItems: 'center' },
+  scopeBtn: { flex: 1, paddingVertical: 5, borderRadius: 6, alignItems: 'center' },
   segText: { fontSize: 12 },
+  scopeText: { fontSize: 11 },
   centered: { flex: 1, alignItems: 'center', justifyContent: 'center', paddingTop: 80 },
   colHead: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: spacing.lg, paddingVertical: spacing.sm, borderBottomWidth: 1 },
   chRank: { width: 28, fontFamily: fonts.monoSemi, fontSize: 9, letterSpacing: 0.6 },

@@ -60,6 +60,40 @@ test('dependencyAuditExitCode fails only when threshold or above vulnerabilities
   assert.equal(dependencyAuditExitCode(buildAuditSummary(sampleAudit, { threshold: 'moderate' })), 1);
 });
 
+test('SDK-pinned React Native audit chain is waived when npm only suggests a downgrade', () => {
+  const summary = buildAuditSummary({
+    vulnerabilities: {
+      'react-native': {
+        name: 'react-native',
+        severity: 'high',
+        isDirect: true,
+        fixAvailable: { name: 'react-native', version: '0.84.1', isSemVerMajor: true },
+        via: ['@react-native/jest-preset'],
+      },
+      '@react-native/virtualized-lists': {
+        name: '@react-native/virtualized-lists',
+        severity: 'high',
+        isDirect: false,
+        fixAvailable: true,
+        via: ['react-native'],
+      },
+      lodash: {
+        name: 'lodash',
+        severity: 'high',
+        isDirect: false,
+        fixAvailable: true,
+        via: [{ name: 'lodash', severity: 'high' }],
+      },
+    },
+    metadata: { vulnerabilities: { info: 0, low: 0, moderate: 0, high: 3, critical: 0, total: 3 } },
+  }, { threshold: 'high' });
+
+  assert.deepEqual(summary.failing.map((item) => item.name), ['lodash']);
+  assert.deepEqual(summary.waived.map((item) => item.name), ['@react-native/virtualized-lists', 'react-native']);
+  assert.equal(dependencyAuditExitCode(summary), 1);
+  assert.match(formatAuditSummary(summary), /Waived SDK-pinned vulnerabilities/);
+});
+
 test('formatAuditSummary is human-readable without dumping raw advisory data', () => {
   const summary = buildAuditSummary(sampleAudit, { threshold: 'high' });
   const output = formatAuditSummary(summary);

@@ -24,6 +24,7 @@ export interface SetHandleResult {
 }
 
 export type SetAvatarResult = Pick<SetHandleResult, 'ok' | 'error'>;
+export type SetProfileLocationResult = Pick<SetHandleResult, 'ok' | 'error'>;
 
 export interface MyProfile {
   handle: string | null;
@@ -115,6 +116,21 @@ export async function setAvatar(avatar: string | null): Promise<SetAvatarResult>
   const { error } = await supabase.rpc('set_avatar', { p_avatar: avatar });
   if (error) return { ok: false, error: error.message };
   return { ok: true };
+}
+
+/** Save a privacy-minimal location for state leaderboards: country/state codes only, no GPS. */
+export async function setProfileLocation(countryCode: string | null, stateCode: string | null): Promise<SetProfileLocationResult> {
+  const { error } = await supabase.rpc('set_profile_location', {
+    p_country_code: normalizeLocationCode(countryCode),
+    p_state_code: normalizeLocationCode(stateCode),
+  });
+  if (error) return { ok: false, error: error.message };
+  return { ok: true };
+}
+
+function normalizeLocationCode(value: string | null): string | null {
+  const trimmed = String(value ?? '').trim().toUpperCase();
+  return trimmed ? trimmed : null;
 }
 
 function isMissingStreakColumnError(error: unknown): boolean {

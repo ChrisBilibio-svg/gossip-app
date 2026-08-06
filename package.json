@@ -33,6 +33,31 @@
     "jest-expo": "~56.0.4",
     "typescript": "~6.0.3"
   },
+  "overrides": {
+    "brace-expansion": "1.1.16",
+    "@expo/fingerprint": {
+      "minimatch": {
+        "brace-expansion": "1.1.16"
+      }
+    },
+    "test-exclude": {
+      "minimatch": {
+        "brace-expansion": "1.1.16"
+      }
+    },
+    "@expo/xcpretty": {
+      "js-yaml": "4.3.0"
+    },
+    "@istanbuljs/load-nyc-config": {
+      "js-yaml": "3.15.0"
+    },
+    "react-devtools-core": {
+      "shell-quote": "1.10.0"
+    },
+    "@expo/metro-config": {
+      "postcss": "8.5.25"
+    }
+  },
   "scripts": {
     "start": "expo start",
     "android": "expo run:android",
@@ -44,7 +69,8 @@
     "test:ui": "jest --config jest.config.cjs",
     "config:preflight": "node scripts/config-preflight.mjs",
     "audit:deps": "node scripts/audit-dependencies.mjs --omit-dev --threshold high",
-    "bot:resolve-deadlines": "node scripts/resolve-deadlines.mjs"
+    "bot:resolve-deadlines": "node scripts/resolve-deadlines.mjs",
+    "bot:reconcile-coin-grants": "node scripts/reconcile-coin-grants.mjs"
   },
   "private": true
 }

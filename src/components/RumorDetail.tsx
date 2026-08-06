@@ -13,10 +13,12 @@ import ResolvedSplit from './ResolvedSplit';
 import CommentSection from './CommentSection';
 import ReactionButtons from './ReactionButtons';
 import OddsBar from './OddsBar';
+import ExchangeMarketEntry from './ExchangeMarketEntry';
 import StatusChip from './StatusChip';
 import Sparkline from './Sparkline';
 import Icon from './icons/Icon';
-import { canSeeMarketStats, deadlineLabel, marketOdds, marketVolume, placeholderSparkline, toMarketStatus } from './marketView';
+import EditorialArtwork from './EditorialArtwork';
+import { deadlineLabel, marketOdds, marketVolume, placeholderSparkline, toMarketStatus } from './marketView';
 
 interface Props {
   rumor: Rumor | null;
@@ -37,14 +39,12 @@ export default function RumorDetail({ rumor, onClose, onVoted, onReact, onOpenRu
   const [rating, setRating] = useState(4);
   const [repostMsg, setRepostMsg] = useState<string | null>(null);
   const [postingRepost, setPostingRepost] = useState(false);
-  const [statsUnlockedByVote, setStatsUnlockedByVote] = useState<Choice | null>(null);
 
   useEffect(() => {
     setExpanded(false);
     setRepostText('');
     setRating(4);
     setRepostMsg(null);
-    setStatsUnlockedByVote(null);
   }, [rumor?.id]);
 
   const submitRepost = async () => {
@@ -70,9 +70,7 @@ export default function RumorDetail({ rumor, onClose, onVoted, onReact, onOpenRu
   const posted = formatDate(rumor.createdAt);
   const confirmedAt = rumor.status !== 'speculated' ? formatDateTime(rumor.resolvedAt) : null;
   const spark = rumor.oddsHistory.length >= 2 ? rumor.oddsHistory : placeholderSparkline(teaPct);
-  const statsChoice = rumor.myChoice ?? statsUnlockedByVote;
-  const showStats = canSeeMarketStats({ status: rumor.status, myChoice: statsChoice, viewerIsPro });
-
+  const displayedSourceCount = Math.max(rumor.sourceCount, rumor.sourceUrl ? 1 : 0);
   return (
     <Modal visible={visible} animationType="slide" onRequestClose={onClose}>
       <View style={[styles.screen, { backgroundColor: colors.bg }]}>
@@ -81,12 +79,14 @@ export default function RumorDetail({ rumor, onClose, onVoted, onReact, onOpenRu
           <Pressable onPress={onClose} hitSlop={8} accessibilityRole="button" accessibilityLabel="Voltar">
             <Feather name="arrow-left" size={20} color={colors.muted} />
           </Pressable>
-          <Text style={[styles.headerTitle, { color: colors.text }]}>Mercado</Text>
+          <Text style={[styles.headerTitle, { color: colors.text }]}>A Coluna</Text>
         </View>
 
         <ScrollView contentContainerStyle={styles.body}>
+          {rumor.editorialImage ? <EditorialArtwork image={rumor.editorialImage} detail /> : null}
           {/* Status + deadline */}
-          <View style={styles.metaRow}>
+          <View style={[styles.metaRow, rumor.editorialImage ? styles.afterArtwork : null]}>
+            <Text style={[styles.categoryKicker, { color: colors.primary }]}>{rumor.category?.trim() || 'Cultura pop'}</Text>
             <StatusChip status={status} />
             {status === 'ABERTO' && dl ? (
               <View style={styles.deadline}>
@@ -160,29 +160,19 @@ export default function RumorDetail({ rumor, onClose, onVoted, onReact, onOpenRu
 
           {/* Odds panel */}
           <View style={[styles.panel, { backgroundColor: colors.card, borderColor: colors.border }]}>
-            {showStats ? (
-              <>
-                <View style={styles.panelHead}>
-                  <Text style={[styles.panelTitle, { color: colors.text }]}>O que a comunidade acha</Text>
-                  <Text style={[styles.panelMeta, { color: colors.faint }]}>
-                    {volume.toLocaleString('pt-BR')} palpites{rumor.sourceCount > 1 ? ` · ${rumor.sourceCount} fontes` : ''}
+            <>
+              <View style={styles.panelHead}>
+                <Text style={[styles.panelTitle, { color: colors.text }]}>O que a comunidade acha</Text>
+                <Text style={[styles.panelMeta, { color: colors.faint }]}>
+                    {volume.toLocaleString('pt-BR')} moedas virtuais em atividade{displayedSourceCount > 0 ? ` · ${displayedSourceCount} ${displayedSourceCount === 1 ? 'fonte' : 'fontes'}` : ''}
                   </Text>
                 </View>
                 <OddsBar teaPct={teaPct} capPct={capPct} />
                 <View style={styles.chartWrap}>
                   <Sparkline data={spark} width={300} height={82} color={teaPct > 50 ? colors.tea : colors.cap} showLabels />
                 </View>
-                <Text style={[styles.chartCaption, { color: colors.faint }]}>probabilidade de ser verdade ao longo do tempo</Text>
-              </>
-            ) : (
-              <View style={styles.lockedStatsPanel}>
-                <View style={[styles.lockIcon, { backgroundColor: colors.raised, borderColor: colors.border }]}>
-                  <Feather name="lock" size={18} color={colors.faint} />
-                </View>
-                <Text style={[styles.panelTitle, { color: colors.text }]}>Estatísticas bloqueadas</Text>
-                <Text style={[styles.lockedStatsCopy, { color: colors.muted }]}>Faça seu palpite para liberar odds, gráficos e o que a comunidade acha. O Viddi Pro mostra tudo antes de você responder.</Text>
-              </View>
-            )}
+                <Text style={[styles.chartCaption, { color: colors.faint }]}>probabilidade de ser verdade ao longo do tempo · moedas não têm valor em dinheiro</Text>
+            </>
           </View>
 
           {/* Resolution rule */}
@@ -198,24 +188,33 @@ export default function RumorDetail({ rumor, onClose, onVoted, onReact, onOpenRu
                 {rumor.evidenceSources.map((s) => (
                   <Pressable key={s.id} onPress={() => Linking.openURL(s.sourceUrl)} accessibilityRole="link">
                     <Text style={[styles.evidenceLink, { color: colors.muted }]}>
-                      {s.supportsOutcome ? '🍵' : '🧢'} {s.sourceLabel || 'fonte'} ↗
+                      {s.supportsOutcome ? 'Verdade' : 'Mentira'} · {s.sourceLabel || 'fonte'} ↗
                     </Text>
                   </Pressable>
                 ))}
+              </View>
+            ) : rumor.sourceUrl ? (
+              <View style={styles.evidence}>
+                <Pressable onPress={() => Linking.openURL(rumor.sourceUrl!)} accessibilityRole="link">
+                  <Text style={[styles.evidenceLink, { color: colors.muted }]}>Fonte da matéria ↗</Text>
+                </Pressable>
               </View>
             ) : null}
           </View>
 
           {/* Position / resolved split */}
           {rumor.status === 'speculated' ? (
-            <VoteBlock
-              rumor={rumor}
-              onVoted={(choice) => {
-                setStatsUnlockedByVote(choice);
-                onVoted?.(choice);
-              }}
-              viewerIsPro={viewerIsPro}
-            />
+            <>
+              <VoteBlock
+                rumor={rumor}
+                onVoted={(choice) => onVoted?.(choice)}
+                viewerIsPro={viewerIsPro}
+              />
+              {/* Real exchange_v2 entry point — self-hides unless a live,
+                  open market backs this rumor and the UI flag is on (off in
+                  prod). Trading itself stays server-gated. */}
+              <ExchangeMarketEntry rumorId={rumor.id} summary={rumor.summary} />
+            </>
           ) : <ResolvedSplit rumor={rumor} large />}
 
           {/* Reactions + repost */}
@@ -274,14 +273,16 @@ export default function RumorDetail({ rumor, onClose, onVoted, onReact, onOpenRu
 const styles = StyleSheet.create({
   screen: { flex: 1, paddingTop: spacing.xxl },
   header: { flexDirection: 'row', alignItems: 'center', gap: spacing.md, paddingHorizontal: spacing.lg, paddingVertical: spacing.md, borderBottomWidth: 1 },
-  headerTitle: { fontFamily: fonts.sansSemi, fontSize: 14 },
+  headerTitle: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 18 },
   body: { paddingHorizontal: spacing.lg, paddingTop: spacing.lg, paddingBottom: spacing.xxl },
   metaRow: { flexDirection: 'row', alignItems: 'center', gap: spacing.sm, marginBottom: spacing.md, flexWrap: 'wrap' },
+  afterArtwork: { marginTop: spacing.md },
+  categoryKicker: { fontFamily: fonts.monoBold, fontSize: 9, letterSpacing: 0.8, textTransform: 'uppercase' },
   deadline: { flexDirection: 'row', alignItems: 'center', gap: 3 },
   deadlineText: { fontFamily: fonts.mono, fontSize: 10 },
   posted: { fontFamily: fonts.mono, fontSize: 10 },
-  headline: { fontFamily: fonts.sansSemi, fontSize: 17, lineHeight: 24 },
-  article: { fontFamily: fonts.sans, fontSize: 13, lineHeight: 21 },
+  headline: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 23, lineHeight: 30 },
+  article: { fontFamily: fonts.serif, fontSize: 15, lineHeight: 24 },
   readMore: { fontFamily: fonts.sansSemi, fontSize: 12, marginTop: spacing.sm },
   updateBox: { borderWidth: 1, borderRadius: radius.sm, padding: spacing.md, marginTop: spacing.md },
   updateBoxLabel: { fontFamily: fonts.monoSemi, fontSize: 10, letterSpacing: 0.4, marginBottom: 4 },
@@ -294,7 +295,7 @@ const styles = StyleSheet.create({
   resolvedWhen: { fontFamily: fonts.mono, fontSize: 11 },
   panel: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.lg },
   panelHead: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: spacing.md },
-  panelTitle: { fontFamily: fonts.sansSemi, fontSize: 12 },
+  panelTitle: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 15 },
   panelMeta: { fontFamily: fonts.mono, fontSize: 11 },
   lockedStatsPanel: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
   lockIcon: { width: 42, height: 42, borderRadius: 21, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
@@ -302,7 +303,7 @@ const styles = StyleSheet.create({
   chartWrap: { marginTop: spacing.md, alignItems: 'stretch' },
   chartCaption: { fontFamily: fonts.mono, fontSize: 9, textAlign: 'center', marginTop: 4 },
   ruleBox: { borderWidth: 1, borderRadius: radius.md, padding: spacing.md, marginTop: spacing.md },
-  ruleTitle: { fontFamily: fonts.sansSemi, fontSize: 12, marginBottom: 4 },
+  ruleTitle: { fontFamily: fonts.serifBold, fontWeight: '700', fontSize: 15, marginBottom: 4 },
   ruleText: { fontFamily: fonts.sans, fontSize: 12, lineHeight: 18 },
   evidence: { marginTop: spacing.sm, gap: 4 },
   evidenceLink: { fontFamily: fonts.mono, fontSize: 11, lineHeight: 18 },

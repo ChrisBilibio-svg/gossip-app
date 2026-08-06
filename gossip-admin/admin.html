@@ -100,6 +100,24 @@ const msg = (t, ok = true) => { const m = $('msg'); m.textContent = t; m.style.c
 const audit = (action, rumor_id, detail) => sb.from('audit_log').insert({ action, rumor_id, detail });
 const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
 const attr = (v) => esc(v);
+const DISCOVERY_ONLY_HOSTS = [/news\.google\.com$/i, /(^|\.)reddit\.com$/i, /(^|\.)x\.com$/i, /(^|\.)twitter\.com$/i, /(^|\.)4chan\.org$/i, /(^|\.)4cdn\.org$/i];
+function safeHttpUrl(value, { authoritative = false } = {}) {
+  const raw = String(value ?? '').trim();
+  if (!raw) return null;
+  try {
+    const url = new URL(raw);
+    if (!['https:', 'http:'].includes(url.protocol)) return null;
+    if (authoritative && DISCOVERY_ONLY_HOSTS.some((pattern) => pattern.test(url.hostname))) return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+function sourceLink(sourceUrl, label = 'fonte') {
+  const safeUrl = safeHttpUrl(sourceUrl, { authoritative: true });
+  if (!safeUrl) return `<span class="warn-text">fonte inválida/não autoritativa</span>`;
+  return `<a href="${attr(safeUrl)}" target="_blank" rel="noopener noreferrer">${esc(label || 'fonte')}</a>`;
+}
 const SEVEN_DAYS_MS = 7 * 24 * 60 * 60 * 1000;
 function sevenDayDeadlineFrom(publishIso) {
   return new Date(new Date(publishIso).getTime() + SEVEN_DAYS_MS).toISOString();
@@ -114,8 +132,11 @@ function normalizeCategory(value) {
 }
 
 function bindAdminActions(root) {
-  root.querySelectorAll('[data-approve-draft-id]').forEach((button) => {
-    button.addEventListener('click', () => approveDraft(button.dataset.approveDraftId));
+  root.querySelectorAll('[data-publish-draft-id]').forEach((button) => {
+    button.addEventListener('click', () => publishDraft(button.dataset.publishDraftId));
+  });
+  root.querySelectorAll('[data-decision-id]').forEach((button) => {
+    button.addEventListener('click', () => recordDecision(button.dataset.decisionId, button.dataset.action));
   });
   root.querySelectorAll('[data-edit-rumor-id]').forEach((button) => {
     button.addEventListener('click', () => editRumor(button.dataset.editRumorId, button.dataset.summary || ''));
@@ -167,31 +188,76 @@ async function boot() {
 }
 
 async function loadDrafts() {
-  const { data, error } = await sb.from('rumors').select('*').eq('is_draft', true).order('created_at', { ascending: false }).limit(50);
+  const { data, error } = await sb.from('rumors')
+    .select('*, rumor_evidence_sources(source_url, source_label)')
+    .eq('is_draft', true).order('created_at', { ascending: false }).limit(50);
   if (error) { $('drafts').innerHTML = ''; return; }
-  $('drafts').innerHTML = (data || []).map((r) => `
+  $('drafts').innerHTML = (data || []).map((r) => {
+    const prob = r.approved_true_probability != null ? r.approved_true_probability : 0.5;
+    const srcs = r.rumor_evidence_sources || [];
+    const srcHtml = srcs.length
+      ? srcs.map((s) => sourceLink(s.source_url, s.source_label)).join(' · ')
+      : (r.source_url ? sourceLink(r.source_url, r.source_label) : 'sem fonte');
+    return `
     <div class="card" style="border-color:#FFD43B">
-      <span class="tag ${esc(r.status)}">${esc(r.status)}</span>
-      <span class="muted"> · ${esc(r.category || 'sem categoria')} · ${esc(r.source_label || 'auto')} · seed ${esc(r.seed_true)}/${esc(r.seed_false)}</span>
-      <div style="margin:6px 0">${esc(r.summary)}</div>
-      <button class="tea" data-approve-draft-id="${attr(r.id)}">✅ Aprovar (ir ao ar)</button>
-      <button class="ghost" data-edit-rumor-id="${attr(r.id)}" data-summary="${attr(r.summary)}">Editar</button>
-      <button class="warn" data-remove-rumor-id="${attr(r.id)}">Descartar</button>
-    </div>`).join('') || '<p class="muted">Nenhum rascunho. (Rode o ingest ou espere o horário.)</p>';
+      <span class="tag ${esc(r.status)}">${esc(r.market_state || 'draft')}</span>
+      <span class="muted"> · ${esc(r.category || 'sem categoria')} · seed ${esc(r.seed_true)}/${esc(r.seed_false)}</span>
+      <div style="margin:6px 0;font-weight:600">${esc(r.summary)}</div>
+      ${r.article ? `<div class="muted" style="margin:6px 0">${esc(r.article)}</div>` : ''}
+      <div class="muted">📎 Fontes: ${srcHtml}</div>
+      <div class="muted">🔎 Resolve-by = horário de publicação + 7 dias (calculado no servidor ao publicar)</div>
+      <div class="row" style="margin-top:8px">
+        <div style="flex:0"><label>Prob. Verdade</label><input id="prob-${attr(r.id)}" type="number" min="0.1" max="0.9" step="0.05" value="${attr(prob)}" style="width:90px" /></div>
+        <div style="flex:0"><label>Agendar (opcional)</label><input id="sched-${attr(r.id)}" type="datetime-local" /></div>
+      </div>
+      <div style="margin-top:8px">
+        <button class="tea" data-publish-draft-id="${attr(r.id)}">✅ Publicar agora</button>
+        <button class="ghost" data-decision-id="${attr(r.id)}" data-action="schedule">📅 Agendar</button>
+        <button class="ghost" data-decision-id="${attr(r.id)}" data-action="request_changes">✏️ Pedir ajustes</button>
+        <button class="warn" data-decision-id="${attr(r.id)}" data-action="reject">Rejeitar</button>
+        <button class="ghost" data-edit-rumor-id="${attr(r.id)}" data-summary="${attr(r.summary)}">Editar</button>
+      </div>
+    </div>`;
+  }).join('') || '<p class="muted">Nenhum rascunho. (Rode o ingest ou espere o horário.)</p>';
   bindAdminActions($('drafts'));
 }
-window.approveDraft = async (id) => {
-  const publishAt = new Date().toISOString();
-  const { error } = await sb.from('rumors').update({
-    is_draft: false,
-    publish_at: publishAt,
-    status: 'speculated',
-    resolution_policy: 'evidence',
-    prediction_deadline: sevenDayDeadlineFrom(publishAt),
-    required_source_count: 2,
-  }).eq('id', id);
+
+// Read + validate the curator-set Verdade probability for a draft card.
+function readTrueProb(id) {
+  const t = parseFloat(document.getElementById('prob-' + id)?.value);
+  if (!(t >= 0.1 && t <= 0.9)) { msg('Probabilidade Verdade deve ficar entre 0.1 e 0.9', false); return null; }
+  return { t, f: Math.round((1 - t) * 10000) / 10000 };
+}
+
+// Atomic publish via the curator-authorized RPC (NEVER a direct is_draft update).
+window.publishDraft = async (id) => {
+  const p = readTrueProb(id);
+  if (!p) return;
+  const { error } = await sb.rpc('publish_approved_market', {
+    p_rumor_id: id,
+    p_true_probability: p.t,
+    p_false_probability: p.f,
+    p_publish_at: new Date().toISOString(),
+    p_approval_reference: 'admin_publish',
+    p_idempotency_key: 'admin-pub-' + id,
+  });
   if (error) return msg(error.message, false);
-  audit('approve_draft', id, { resolution_policy: 'evidence', prediction_deadline: sevenDayDeadlineFrom(publishAt) }); msg('Aprovado como evidência + resolve-by ✅'); loadDrafts(); loadRumors();
+  msg('Publicado com odds fixas + resolve-by 7 dias ✅'); loadDrafts(); loadRumors();
+};
+
+// Approve/schedule/reject/request_changes via the curator RPC (no client is_draft writes).
+window.recordDecision = async (id, action) => {
+  const params = { p_rumor_id: id, p_action: action };
+  if (action === 'schedule') {
+    const p = readTrueProb(id); if (!p) return;
+    params.p_true_probability = p.t; params.p_false_probability = p.f;
+    const when = document.getElementById('sched-' + id)?.value;
+    if (!when) return msg('Escolha data/hora para agendar', false);
+    params.p_scheduled_publish_at = new Date(when).toISOString();
+  }
+  const { error } = await sb.rpc('record_market_decision', params);
+  if (error) return msg(error.message, false);
+  msg(action === 'reject' ? 'Rejeitado' : action === 'schedule' ? 'Agendado ✅' : 'Enviado para ajustes'); loadDrafts();
 };
 
 window.createRumor = async () => {
@@ -199,6 +265,9 @@ window.createRumor = async () => {
   const policy = $('resolutionPolicy').value === 'deadline' ? 'deadline' : 'evidence';
   const deadline = $('deadline').value ? new Date($('deadline').value).toISOString() : null;
   const requiredSources = Math.min(Math.max(parseInt($('requiredSources').value || '2', 10) || 2, 1), 5);
+  const manualSourceUrl = $('source').value.trim();
+  const safeSourceUrl = manualSourceUrl ? safeHttpUrl(manualSourceUrl, { authoritative: true }) : null;
+  if (manualSourceUrl && !safeSourceUrl) return msg('URL da fonte deve ser http(s) e não pode ser Google News/social/discovery-only', false);
   const payload = {
     summary: $('summary').value.trim(),
     status: 'speculated',
@@ -209,7 +278,7 @@ window.createRumor = async () => {
     required_source_count: requiredSources,
     seed_true: parseInt($('seedTrue').value || '0', 10),
     seed_false: parseInt($('seedFalse').value || '0', 10),
-    source_url: $('source').value.trim() || null,
+    source_url: safeSourceUrl,
     category: normalizeCategory($('category').value),
   };
   if (!payload.summary) return msg('Escreve o resumo', false);
@@ -234,7 +303,7 @@ function evidenceList(r) {
   return `<div class="muted" style="margin:6px 0">${sources.map((s) => `
     <div>
       ${s.supports_outcome ? '🍵' : '🧢'}
-      <a href="${esc(s.source_url)}" target="_blank" rel="noopener noreferrer">${esc(s.source_label || 'fonte')}</a>
+      ${sourceLink(s.source_url, s.source_label)}
       ${s.note ? ` — ${esc(s.note)}` : ''}
       <button class="ghost" data-remove-evidence-id="${attr(s.id)}" data-rumor-id="${attr(r.id)}">remover fonte</button>
       <button class="ghost" data-split-source-id="${attr(s.id)}" data-rumor-id="${attr(r.id)}">separar cluster</button>
@@ -283,12 +352,8 @@ async function loadRumors() {
 window.addEvidence = async (id, supportsOutcome) => {
   const sourceUrl = prompt('URL da fonte confiável:');
   if (!sourceUrl) return;
-  let source_url;
-  try {
-    source_url = new URL(sourceUrl.trim()).toString();
-  } catch {
-    return msg('URL da fonte inválida', false);
-  }
+  const source_url = safeHttpUrl(sourceUrl, { authoritative: true });
+  if (!source_url) return msg('URL da fonte deve ser http(s) e não pode ser Google News/social/discovery-only', false);
   const source_label = prompt('Nome da fonte (ex.: G1, UOL, LeoDias):') || null;
   const note = prompt('Nota rápida para o curador (opcional):') || null;
   const { error } = await sb.from('rumor_evidence_sources').insert({
@@ -317,6 +382,8 @@ window.splitClusterSource = async (sourceId, rumorId) => {
   const summary = prompt('Resumo do novo mercado para essa fonte:', source.note?.replace(/^Cluster automático do ingest:\s*/i, '') || 'Nova previsão a partir dessa fonte');
   if (!summary?.trim()) return;
   const publishAt = new Date().toISOString();
+  const sourceUrl = safeHttpUrl(source.source_url, { authoritative: true });
+  if (!sourceUrl) return msg('Fonte do cluster é inválida/não autoritativa; não vou criar rascunho a partir dela.', false);
   const payload = {
     summary: summary.trim(),
     status: 'speculated',
@@ -327,7 +394,7 @@ window.splitClusterSource = async (sourceId, rumorId) => {
     required_source_count: 2,
     seed_true: 0,
     seed_false: 0,
-    source_url: source.source_url,
+    source_url: sourceUrl,
     source_label: source.source_label,
   };
   const { data: rumor, error: insertError } = await sb.from('rumors').insert(payload).select('id').single();
@@ -342,9 +409,11 @@ window.mergeCluster = async (targetRumorId) => {
   if (!sourceRumorId) return;
   const { data: sourceRumor, error: readError } = await sb.from('rumors').select('id, source_url, source_label, summary').eq('id', sourceRumorId.trim()).maybeSingle();
   if (readError || !sourceRumor) return msg(readError?.message || 'Mercado duplicado não encontrado', false);
+  const safeMergedSourceUrl = safeHttpUrl(sourceRumor.source_url, { authoritative: true });
+  if (!safeMergedSourceUrl) return msg('Mercado duplicado não tem fonte autoritativa válida para mesclar.', false);
   const { error: insertError } = await sb.from('rumor_evidence_sources').insert({
     rumor_id: targetRumorId,
-    source_url: sourceRumor.source_url,
+    source_url: safeMergedSourceUrl,
     source_label: sourceRumor.source_label || 'cluster manual',
     supports_outcome: true,
     note: `Mesclado manualmente: ${sourceRumor.summary || sourceRumor.id}`,

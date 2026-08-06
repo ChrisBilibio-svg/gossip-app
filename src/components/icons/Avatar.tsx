@@ -100,7 +100,7 @@ export default function Avatar({ value, size = 24 }: { value?: string | null; si
   }
   const sw = Math.min(5, Math.max(2, 100 / size));
   return (
-    <Svg width={size} height={size} viewBox="0 0 48 48" accessibilityElementsHidden>
+    <Svg width={size} height={size} viewBox="0 0 48 48" accessible={false} aria-hidden>
       {glyph(id, CLR[id], sw)}
     </Svg>
   );

@@ -1,6 +1,8 @@
 # Security review — Fofoca / `pastorfred/gossip`
 
-_Last reviewed: 2026-06-05. Scope: local checkout `/home/chris-bilibio/repos/gossip` on branch `main`, commit `116cbf8 feat: add feed keyword search`._
+_Last reviewed: 2026-07-30. Scope: local checkout `/home/chris-bilibio/repos/gossip` on branch `main`, latest cybersecurity pass._
+
+> 2026-07-30 addendum: prior SEC-001/002/004/006/007 items have code-level mitigations in newer commits/migrations. Latest pass added admin authoritative-source URL validation, service-key Supabase URL trust checks, `0049_rpc_execute_hardening.sql` for explicit PUBLIC/anon RPC execute revokes, and a PostCSS override to `8.5.25`. Remaining live risk depends on Chris manually applying pending Supabase migrations (`0036`, `0049`, plus other feature migrations) and on Expo/RN upstream advisories that require SDK-compatible upgrade review.
 
 ## Executive summary
 

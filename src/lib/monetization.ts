@@ -98,7 +98,7 @@ export function nextFeedNativeAdIndex(cardIndex: number): boolean {
 }
 
 export const AD_IMPLEMENTATION_GUARDRAILS = [
-  'Ads never affect TEA/CAP/VOID resolution, odds, score, rank, or truth copy.',
+  'Ads never affect Verdade/Mentira/VOID resolution, odds, score, rank, or truth copy.',
   'Pro users are ad-free.',
   'Pro can reveal pre-bet odds, graphs, and crowd stats; free users unlock those insights only after placing a bet.',
   'No personalized ads until consent is explicit; non-personalized ads are the fallback.',

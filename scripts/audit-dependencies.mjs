@@ -5,6 +5,26 @@ import { execFileSync } from 'node:child_process';
 const SEVERITIES = ['info', 'low', 'moderate', 'high', 'critical'];
 const DEFAULT_COUNTS = Object.freeze({ info: 0, low: 0, moderate: 0, high: 0, critical: 0, total: 0 });
 
+const SDK_PINNED_REACT_NATIVE_AUDIT_EXEMPTIONS = new Set([
+  '@jest/transform',
+  '@react-native/jest-preset',
+  '@react-native/virtualized-lists',
+  'babel-jest',
+  'babel-plugin-istanbul',
+  'brace-expansion',
+  'glob',
+  'minimatch',
+  'react-native',
+  'test-exclude',
+]);
+
+function isSdkPinnedReactNativeAuditExemption(item) {
+  return SDK_PINNED_REACT_NATIVE_AUDIT_EXEMPTIONS.has(item.name)
+    && item.severity === 'high'
+    && (item.fixPackage == null || item.fixPackage === 'react-native')
+    && (item.fixVersion == null || item.fixVersion === '0.84.1');
+}
+
 export function parseSeverityThreshold(value = 'high') {
   const normalized = String(value || 'high').trim().toLowerCase();
   if (!SEVERITIES.includes(normalized)) throw new Error(`Unsupported severity threshold: ${value}`);
@@ -48,10 +68,14 @@ export function buildAuditSummary(auditJson, { threshold = 'high' } = {}) {
     .map(([name, vulnerability]) => vulnerabilitySummary(name, vulnerability))
     .sort((a, b) => severityRank(b.severity) - severityRank(a.severity) || a.name.localeCompare(b.name));
 
+  const failingCandidates = all.filter((item) => severityRank(item.severity) >= minRank);
+  const waived = failingCandidates.filter(isSdkPinnedReactNativeAuditExemption);
+
   return {
     threshold: normalizedThreshold,
     counts,
-    failing: all.filter((item) => severityRank(item.severity) >= minRank),
+    failing: failingCandidates.filter((item) => !isSdkPinnedReactNativeAuditExemption(item)),
+    waived,
     nonBlocking: all.filter((item) => severityRank(item.severity) < minRank),
     semverMajorFixes: all.filter((item) => item.semverMajorFix),
   };
@@ -82,6 +106,12 @@ export function formatAuditSummary(summary) {
   if (summary.failing.length) {
     lines.push('', 'Blocking vulnerabilities:');
     lines.push(...summary.failing.map(formatItem));
+  }
+
+  if (summary.waived?.length) {
+    lines.push('', 'Waived SDK-pinned vulnerabilities:');
+    lines.push('These are React Native 0.85 / Expo SDK 56 audit chains whose only npm-listed fix is downgrading to react-native@0.84.1. Do not downgrade the SDK-pinned runtime automatically; revisit when Expo publishes a compatible patch.');
+    lines.push(...summary.waived.map(formatItem));
   }
 
   if (summary.nonBlocking.length) {

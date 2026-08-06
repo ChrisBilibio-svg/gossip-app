@@ -1,0 +1,42 @@
+name: Reconcile coin grants
+
+on:
+  schedule:
+    - cron: '10 9 * * *' # 09:10 UTC; live grants remain disabled unless COIN_GRANT_LIVE=true
+  workflow_dispatch:
+    inputs:
+      live:
+        description: 'true = call apply_due_economy_grants; false = dry-run message only'
+        required: false
+        default: 'false'
+      limit:
+        description: 'Maximum users to scan (1-5000)'
+        required: false
+        default: '500'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}
+  cancel-in-progress: false
+
+jobs:
+  reconcile-coin-grants:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: Install dependencies
+        run: npm ci
+      - name: Reconcile coin grants
+        run: |
+          if [ -z "${SUPABASE_SERVICE_ROLE_KEY:-}" ]; then echo "::notice::Supabase credentials not configured; skipping this run."; exit 0; fi
+          node scripts/reconcile-coin-grants.mjs
+        env:
+          SUPABASE_URL: ${{ secrets.SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          COIN_GRANT_LIVE: ${{ github.event.inputs.live || vars.COIN_GRANT_LIVE || 'false' }}
+          COIN_GRANT_LIMIT: ${{ github.event.inputs.limit || vars.COIN_GRANT_LIMIT || '500' }}

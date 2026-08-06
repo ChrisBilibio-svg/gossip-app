@@ -1,7 +1,7 @@
 /**
- * FeedScreen stats unlock regression. Free users should not see market stats
- * before betting, but a successful vote must unlock stats immediately and keep
- * them unlocked locally even if the refresh response is briefly stale.
+ * FeedScreen market odds regression. Coin markets must show odds before any user
+ * interaction, and Yes/No actions must open coin trading instead of submitting
+ * a separate free vote.
  */
 jest.mock('../../src/lib/rumors', () => {
   const actual = jest.requireActual('../../src/lib/rumors');
@@ -21,6 +21,15 @@ jest.mock('../../src/lib/predictions', () => ({
 jest.mock('../../src/lib/profile', () => ({
   getMyHandle: jest.fn(),
 }));
+jest.mock('../../src/lib/economy', () => {
+  const actual = jest.requireActual('../../src/lib/economy');
+  return {
+    ...actual,
+    getCoinEconomyState: jest.fn(),
+    requestFixedPredictionQuote: jest.fn(),
+    placeFixedPrediction: jest.fn(),
+  };
+});
 jest.mock('../../src/lib/reactions', () => {
   const actual = jest.requireActual('../../src/lib/reactions');
   return {
@@ -39,11 +48,14 @@ import type { Rumor } from '../../src/lib/rumors';
 import { fetchFeed } from '../../src/lib/rumors';
 import { getMyChoice, placeBet } from '../../src/lib/predictions';
 import { getMyHandle } from '../../src/lib/profile';
+import { getCoinEconomyState, requestFixedPredictionQuote } from '../../src/lib/economy';
 
 const mockFetchFeed = fetchFeed as jest.Mock;
 const mockGetMyChoice = getMyChoice as jest.Mock;
 const mockPlaceBet = placeBet as jest.Mock;
 const mockGetMyHandle = getMyHandle as jest.Mock;
+const mockEconomy = getCoinEconomyState as jest.Mock;
+const mockQuote = requestFixedPredictionQuote as jest.Mock;
 
 function makeRumor(overrides: Partial<Rumor> = {}): Rumor {
   const { category = null, ...rest } = overrides;
@@ -81,21 +93,46 @@ beforeEach(() => {
   mockGetMyChoice.mockReset().mockResolvedValue(null);
   mockGetMyHandle.mockReset().mockResolvedValue('fofoqueiro');
   mockPlaceBet.mockReset().mockResolvedValue({ ok: true });
+  mockEconomy.mockReset().mockResolvedValue({
+    featureEnabled: true,
+    predictionPlacementKilled: false,
+    subscriptionPurchasesKilled: false,
+    walletGrantsKilled: false,
+    balance: 2000,
+    proActive: false,
+    standardStakeCoins: 100,
+    quickStakeCoins: [50, 100, 250],
+    minStakeCoins: 50,
+    absoluteMaxStakeCoins: 500,
+    recommendedWalletFraction: 0.05,
+    maxWalletFraction: 0.1,
+    quoteTtlSeconds: 30,
+  });
+  mockQuote.mockReset().mockResolvedValue({
+    outcome: 'true',
+    probability: 0.75,
+    decimalOdds: 1.266666,
+    probabilityVersion: 1,
+    quoteId: 'quote-1',
+    expiresAt: '2026-06-01T00:00:30Z',
+  });
 });
 
-test('free users unlock market card stats after voting even when refresh is stale', async () => {
+test('open feed cards show odds before trading and cannot submit a free vote', async () => {
   await render(<FeedScreen />);
 
-  expect(await screen.findByText('Palpite para ver odds e gráficos')).toBeTruthy();
-  fireEvent.press(screen.getByText('Bruna vai lançar música nova?'));
+  expect(await screen.findByText('Bruna vai lançar música nova?')).toBeTruthy();
+  expect(screen.getByText('VERDADE')).toBeTruthy();
+  expect(screen.getByText('MENTIRA')).toBeTruthy();
+  expect(screen.getByText('Retorno atual: 1.27x')).toBeTruthy();
+  expect(screen.getByText('Retorno atual: 3.80x')).toBeTruthy();
+  expect(screen.getByText('20 volume negociado · 1 fonte')).toBeTruthy();
+  expect(screen.getByText('Moedas não têm valor em dinheiro.')).toBeTruthy();
+  expect(screen.queryByText('Palpite para ver odds e gráficos')).toBeNull();
 
-  fireEvent.press(await screen.findByLabelText('Palpitar que é verdade, tea'));
-  await waitFor(() => expect(mockPlaceBet).toHaveBeenCalledWith('rumor-1', 'true'));
-  await waitFor(() => expect(screen.queryByText('Estatísticas bloqueadas')).toBeNull());
-  expect(screen.getAllByText(/21 palpites/).length).toBeGreaterThan(0);
+  fireEvent.press(await screen.findByLabelText('Escolher Verdade'));
 
-  fireEvent.press(screen.getByLabelText('Voltar'));
-
-  await waitFor(() => expect(screen.queryByText('Palpite para ver odds e gráficos')).toBeNull());
-  expect(screen.getAllByText(/21 palpites/).length).toBeGreaterThan(0);
+  expect(await screen.findByText('Confirmar palpite')).toBeTruthy();
+  await waitFor(() => expect(mockQuote).toHaveBeenCalledWith('rumor-1', 'true'));
+  expect(mockPlaceBet).not.toHaveBeenCalled();
 });

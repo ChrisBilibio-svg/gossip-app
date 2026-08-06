@@ -1,6 +1,6 @@
 import { isMissingRpcError } from './rpcFallback';
 import { supabase, supabaseConfigured } from './supabase';
-import { mapRumorRows, type FeedResult, type Rumor, type RumorRow } from './rumors';
+import { attachEditorialImages, mapRumorRows, type FeedResult, type Rumor, type RumorRow } from './rumors';
 import { filterRumorsByQuery } from './feedSearchCore';
 
 export { filterRumorsByQuery } from './feedSearchCore';
@@ -25,5 +25,6 @@ export async function searchRumorsByQuery(query: string, fallbackRumors: Rumor[]
     return { rumors: [], error: String(fallbackError.message ?? 'Search unavailable') };
   }
 
-  return { rumors: mapRumorRows((data ?? []) as RumorRow[]), error: null };
+  const rows = await attachEditorialImages((data ?? []) as RumorRow[]);
+  return { rumors: mapRumorRows(rows), error: null };
 }
