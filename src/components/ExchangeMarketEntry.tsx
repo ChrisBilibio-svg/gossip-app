@@ -6,7 +6,9 @@ import { useTheme } from '../theme/ThemeProvider';
 import { fonts, radius, spacing } from '../theme/tokens';
 import { exchangeV2UiEnabled, resolveExchangeEnvironment } from '../lib/exchangeUiFlags';
 import { getMarketSnapshotV2, type ExchangeOutcome, type MarketSnapshotV2 } from '../lib/exchangeV2';
+import { supabase, supabaseConfigured } from '../lib/supabase';
 import ExchangeTradeSheet from './ExchangeTradeSheet';
+import ExchangePositionsPanel from './ExchangePositionsPanel';
 
 /**
  * Real-market entry point for exchange v2 (Claude/UI lane). Mounted under a
@@ -42,7 +44,13 @@ function cents(price: number | null | undefined): string {
 export default function ExchangeMarketEntry({ rumorId, summary, previewSnapshot }: Props) {
   const { colors } = useTheme();
   const [snapshot, setSnapshot] = useState<MarketSnapshotV2 | null>(previewSnapshot ?? null);
+  const [ammEnabled, setAmmEnabled] = useState(false);
+  // AMM trades don't create CLOB fills, so the snapshot's lastTradePrice stays
+  // null — read the market's own last_trade_price to surface "último negócio".
+  const [ammLastTrade, setAmmLastTrade] = useState<number | null>(null);
   const [buyOutcome, setBuyOutcome] = useState<ExchangeOutcome | null>(null);
+  // Bumped after a buy/sell so the snapshot price and holdings reload.
+  const [refreshKey, setRefreshKey] = useState(0);
 
   useEffect(() => {
     if (!exchangeV2UiEnabled) return;
@@ -52,6 +60,8 @@ export default function ExchangeMarketEntry({ rumorId, summary, previewSnapshot 
     }
     let active = true;
     setSnapshot(null);
+    setAmmEnabled(false);
+    setAmmLastTrade(null);
     getMarketSnapshotV2(rumorId)
       .then((snap) => {
         if (active) setSnapshot(snap);
@@ -59,10 +69,25 @@ export default function ExchangeMarketEntry({ rumorId, summary, previewSnapshot 
       .catch(() => {
         if (active) setSnapshot(null);
       });
+    // Casual buys route to the LMSR house AMM when this market runs on it;
+    // also grab last_trade_price (AMM trades don't show up in the snapshot).
+    if (supabaseConfigured) {
+      supabase
+        .from('exchange_markets')
+        .select('amm_enabled, last_trade_price')
+        .eq('market_id', rumorId)
+        .maybeSingle()
+        .then(({ data }) => {
+          if (!active) return;
+          setAmmEnabled(Boolean(data?.amm_enabled));
+          const lt = data?.last_trade_price;
+          setAmmLastTrade(lt != null ? Number(lt) : null);
+        });
+    }
     return () => {
       active = false;
     };
-  }, [rumorId, previewSnapshot]);
+  }, [rumorId, previewSnapshot, refreshKey]);
 
   // Ship nothing to prod, and stay invisible unless a real, open market backs
   // this rumor.
@@ -122,9 +147,9 @@ export default function ExchangeMarketEntry({ rumorId, summary, previewSnapshot 
         </View>
       )}
 
-      {snapshot.lastTradePrice != null ? (
+      {(snapshot.lastTradePrice ?? ammLastTrade) != null ? (
         <Text style={[styles.lastTrade, { color: colors.faint }]}>
-          Último negócio: {cents(snapshot.lastTradePrice)} · Verdade
+          Último negócio: {cents(snapshot.lastTradePrice ?? ammLastTrade)} · Verdade
         </Text>
       ) : null}
 
@@ -144,14 +169,29 @@ export default function ExchangeMarketEntry({ rumorId, summary, previewSnapshot 
         </Text>
       </View>
 
+      {previewSnapshot === undefined ? (
+        <View style={styles.positionsWrap}>
+          <ExchangePositionsPanel
+            key={refreshKey}
+            marketFilter={rumorId}
+            ammEnabled={ammEnabled}
+            environment={resolveExchangeEnvironment()}
+            markByMarket={{ [rumorId]: snapshot.markProbability }}
+            onCashedOut={() => setRefreshKey((k) => k + 1)}
+          />
+        </View>
+      ) : null}
+
       <ExchangeTradeSheet
         visible={buyOutcome !== null}
         marketId={rumorId}
         summary={summary}
         initialOutcome={buyOutcome ?? 'true'}
         environment={resolveExchangeEnvironment()}
+        ammEnabled={ammEnabled}
         previewSnapshot={previewSnapshot}
         onClose={() => setBuyOutcome(null)}
+        onFilled={() => setRefreshKey((k) => k + 1)}
       />
     </View>
   );
@@ -190,4 +230,5 @@ const styles = StyleSheet.create({
   buyText: { fontFamily: fonts.sansBold, fontSize: 13 },
   footRow: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: spacing.xs },
   footText: { fontFamily: fonts.sans, fontSize: 10, lineHeight: 15, flex: 1 },
+  positionsWrap: { marginTop: spacing.sm, gap: spacing.sm },
 });

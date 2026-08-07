@@ -5,9 +5,11 @@ import { useTheme } from '../theme/ThemeProvider';
 import { fonts, radius, spacing } from '../theme/tokens';
 import {
   buildExchangeClientOrderId,
+  executeAmmTradeV2,
   getPortfolioV2,
   isDuplicateExchangeOrderResult,
   normalizeExchangeV2Error,
+  quoteAmmV2,
   quoteCashOutV1,
   sellPositionV1,
   type ExchangePositionV2,
@@ -25,14 +27,18 @@ interface Props {
   previewPositions?: ExchangePositionV2[];
   /** Map of marketId -> current mark price (0..1) for the winning side, for value display. */
   markByMarket?: Record<string, number>;
+  /** Only show holdings for this market (used inline on a market's detail). */
+  marketFilter?: string;
+  /** Cash out through the LMSR house AMM instead of the CLOB. */
+  ammEnabled?: boolean;
   onCashedOut?: (position: ExchangePositionV2) => void;
 }
 
-type RowState = { quoting: boolean; selling: boolean; estimate: number | null; error: string | null; done: boolean };
+type RowState = { quoting: boolean; selling: boolean; estimate: number | null; error: string | null; done: boolean; received: number | null };
 
-const EMPTY_ROW: RowState = { quoting: false, selling: false, estimate: null, error: null, done: false };
+const EMPTY_ROW: RowState = { quoting: false, selling: false, estimate: null, error: null, done: false, received: null };
 
-export default function ExchangePositionsPanel({ environment = 'production', previewPositions, markByMarket, onCashedOut }: Props) {
+export default function ExchangePositionsPanel({ environment = 'production', previewPositions, markByMarket, marketFilter, ammEnabled = false, onCashedOut }: Props) {
   const { colors } = useTheme();
   const [positions, setPositions] = useState<ExchangePositionV2[] | null>(previewPositions ?? null);
   const [loading, setLoading] = useState(previewPositions === undefined);
@@ -58,6 +64,13 @@ export default function ExchangePositionsPanel({ environment = 'production', pre
 
   const quoteCashOut = useCallback(async (pos: ExchangePositionV2) => {
     patchRow(pos.id, { quoting: true, error: null });
+    if (ammEnabled) {
+      const q = await quoteAmmV2(pos.marketId, pos.outcome, 'sell', String(pos.quantity));
+      patchRow(pos.id, { quoting: false });
+      if (!q) { patchRow(pos.id, { error: 'A negociação deste mercado ainda não está disponível.' }); return; }
+      patchRow(pos.id, { estimate: Math.round(q.totalCoins) });
+      return;
+    }
     const quote = await quoteCashOutV1(pos.marketId, pos.outcome, String(pos.quantity));
     patchRow(pos.id, { quoting: false });
     if (!quote) {
@@ -66,10 +79,30 @@ export default function ExchangePositionsPanel({ environment = 'production', pre
     }
     const price = quote.estimatedAverageExecutionPrice ?? quote.requestedLimitPrice;
     patchRow(pos.id, { estimate: Math.round(pos.quantity * price) });
-  }, [patchRow]);
+  }, [ammEnabled, patchRow]);
 
   const confirmSell = useCallback(async (pos: ExchangePositionV2) => {
     patchRow(pos.id, { selling: true, error: null });
+    if (ammEnabled) {
+      const q = await quoteAmmV2(pos.marketId, pos.outcome, 'sell', String(pos.quantity));
+      if (!q) { patchRow(pos.id, { selling: false, error: 'A negociação ainda não está disponível.' }); return; }
+      const result = await executeAmmTradeV2({
+        marketId: pos.marketId,
+        outcome: pos.outcome,
+        action: 'sell',
+        quantity: String(pos.quantity),
+        quoteId: q.quoteId,
+        environment,
+      });
+      patchRow(pos.id, { selling: false });
+      if (result.ok) {
+        patchRow(pos.id, { done: true, estimate: null, received: Math.round(result.totalCoins ?? q.totalCoins) });
+        onCashedOut?.(pos);
+        return;
+      }
+      patchRow(pos.id, { error: normalizeExchangeV2Error(result.error ?? result.errorCode ?? '').message });
+      return;
+    }
     const quote = await quoteCashOutV1(pos.marketId, pos.outcome, String(pos.quantity));
     if (!quote) { patchRow(pos.id, { selling: false, error: 'A negociação ainda não está disponível.' }); return; }
     const clientOrderId = buildExchangeClientOrderId({ marketId: pos.marketId, outcome: pos.outcome, action: 'sell', quoteId: quote.quoteId });
@@ -90,16 +123,26 @@ export default function ExchangePositionsPanel({ environment = 'production', pre
       return;
     }
     patchRow(pos.id, { error: normalizeExchangeV2Error(result.error ?? result.errorCode ?? '').message });
-  }, [environment, onCashedOut, patchRow]);
+  }, [ammEnabled, environment, onCashedOut, patchRow]);
 
-  if (loading) return <Text style={[styles.copy, { color: colors.muted }]}>Carregando suas posições…</Text>;
-  if (!positions || positions.length === 0) {
-    return <Text style={[styles.copy, { color: colors.muted }]}>Você ainda não tem posições. Compre um palpite para começar.</Text>;
+  const shown = (positions ?? []).filter(
+    (p) => (marketFilter ? p.marketId === marketFilter : true) && p.quantity > 0,
+  );
+
+  // Scoped to one market (inline on a detail): render nothing until there's a
+  // holding, so it only appears once the user actually owns shares here.
+  if (marketFilter) {
+    if (loading || shown.length === 0) return null;
+  } else {
+    if (loading) return <Text style={[styles.copy, { color: colors.muted }]}>Carregando suas posições…</Text>;
+    if (shown.length === 0) {
+      return <Text style={[styles.copy, { color: colors.muted }]}>Você ainda não tem posições. Compre um palpite para começar.</Text>;
+    }
   }
 
   return (
     <View style={styles.list}>
-      {positions.map((pos) => {
+      {shown.map((pos) => {
         const row = rows[pos.id] ?? EMPTY_ROW;
         const isTea = pos.outcome === 'true';
         const sideColor = isTea ? colors.tea : colors.cap;
@@ -123,7 +166,9 @@ export default function ExchangePositionsPanel({ environment = 'production', pre
             {row.error ? <Text style={[styles.error, { color: colors.danger }]}>{row.error}</Text> : null}
 
             {row.done ? (
-              <Text style={[styles.doneText, { color: colors.tea }]}>Posição vendida ✓</Text>
+              <Text style={[styles.doneText, { color: colors.tea }]}>
+                {row.received != null ? `Vendido · recebeu ${row.received.toLocaleString('pt-BR')} moedas ✓` : 'Posição vendida ✓'}
+              </Text>
             ) : row.estimate != null ? (
               <View style={styles.actions}>
                 <Pressable onPress={() => patchRow(pos.id, { estimate: null })} style={[styles.ghostBtn, { borderColor: colors.border }]} accessibilityRole="button">

@@ -6,11 +6,14 @@ import { useTheme } from '../theme/ThemeProvider';
 import { fonts, radius, spacing } from '../theme/tokens';
 import {
   buildExchangeClientOrderId,
+  executeAmmTradeV2,
   getMarketSnapshotV2,
   isDuplicateExchangeOrderResult,
   normalizeExchangeV2Error,
   placeOrderV2,
+  quoteAmmV2,
   quoteOrderV2,
+  type AmmQuoteV2,
   type ExchangeOutcome,
   type MarketSnapshotV2,
   type OrderQuoteV2,
@@ -33,6 +36,11 @@ interface Props {
   summary: string;
   initialOutcome?: ExchangeOutcome;
   environment?: 'development' | 'preview' | 'production';
+  /**
+   * When the market runs on the LMSR house AMM, quote/execute go through the
+   * always-on curve (`quoteAmmV2` / `executeAmmTradeV2`) instead of the CLOB.
+   */
+  ammEnabled?: boolean;
   /** Bypass the network snapshot load (design preview / dev-gated demos). */
   previewSnapshot?: MarketSnapshotV2 | null;
   onClose: () => void;
@@ -52,6 +60,7 @@ export default function ExchangeTradeSheet({
   summary,
   initialOutcome = 'true',
   environment = 'production',
+  ammEnabled = false,
   previewSnapshot,
   onClose,
   onFilled,
@@ -61,6 +70,9 @@ export default function ExchangeTradeSheet({
   const [outcome, setOutcome] = useState<ExchangeOutcome>(initialOutcome);
   const [qtyText, setQtyText] = useState('100');
   const [quote, setQuote] = useState<OrderQuoteV2 | null>(null);
+  const [ammQuote, setAmmQuote] = useState<AmmQuoteV2 | null>(null);
+  const [placed, setPlaced] = useState<{ outcome: ExchangeOutcome; quantity: number; cost: number } | null>(null);
+  const clearQuotes = useCallback(() => { setQuote(null); setAmmQuote(null); }, []);
   const [loading, setLoading] = useState(true);
   const [quoting, setQuoting] = useState(false);
   const [placing, setPlacing] = useState(false);
@@ -75,6 +87,8 @@ export default function ExchangeTradeSheet({
     let active = true;
     setOutcome(initialOutcome);
     setQuote(null);
+    setAmmQuote(null);
+    setPlaced(null);
     setNotice(null);
     setErrorMsg(null);
     setUnavailable(false);
@@ -124,11 +138,35 @@ export default function ExchangeTradeSheet({
   const netWin = maxReturn - cost;
   const probPct = price != null ? Math.round(price * 100) : null;
 
+  // Unified view over the CLOB quote and the AMM quote so the body renders one
+  // flow. `activeCost` becomes the exact curve cost once an AMM quote lands.
+  const hasQuote = ammEnabled ? ammQuote != null : quote != null;
+  const activeCost = ammEnabled && ammQuote ? Math.round(ammQuote.totalCoins) : cost;
+  const activeNetWin = maxReturn - activeCost;
+  const activeProbPct = ammEnabled && ammQuote ? Math.round(ammQuote.unitPrice * 100) : probPct;
+  const activeExpiresAt = ammEnabled ? ammQuote?.expiresAt ?? null : quote?.expiresAt ?? null;
+  const activeWarning = ammEnabled ? ammQuote?.warnings?.[0] ?? null : quote?.warnings?.[0] ?? null;
+
   const fetchQuote = useCallback(
     async (noticeText?: string) => {
-      if (!snapshot || price == null || !validQty) return;
+      if (!snapshot || !validQty) return;
       setQuoting(true);
       setErrorMsg(null);
+
+      if (ammEnabled) {
+        const next = await quoteAmmV2(marketId, outcome, 'buy', String(quantity));
+        setQuoting(false);
+        if (!next) {
+          setAmmQuote(null);
+          setErrorMsg('Não foi possível cotar na AMM agora. Ajuste a quantidade e tente de novo.');
+          return;
+        }
+        setAmmQuote(next);
+        if (noticeText) setNotice(noticeText);
+        return;
+      }
+
+      if (price == null) { setQuoting(false); return; }
       const next = await quoteOrderV2(marketId, outcome, 'buy', String(quantity), price.toFixed(8));
       setQuoting(false);
       if (!next) {
@@ -139,10 +177,41 @@ export default function ExchangeTradeSheet({
       setQuote(next);
       if (noticeText) setNotice(noticeText);
     },
-    [snapshot, price, validQty, marketId, outcome, quantity],
+    [snapshot, price, validQty, marketId, outcome, quantity, ammEnabled],
   );
 
   const submit = useCallback(async () => {
+    if (ammEnabled) {
+      if (!ammQuote || !validQty) return;
+      setPlacing(true);
+      setErrorMsg(null);
+      const result = await executeAmmTradeV2({
+        marketId,
+        outcome,
+        action: 'buy',
+        quantity: String(quantity),
+        quoteId: ammQuote.quoteId,
+        environment,
+      });
+      setPlacing(false);
+      if (result.ok) {
+        setPlaced({ outcome, quantity, cost: Math.round(result.totalCoins ?? activeCost) });
+        onFilled?.(outcome);
+        return;
+      }
+      if (result.requiresRequote) {
+        setAmmQuote(null);
+        await fetchQuote('O preço da AMM mudou. Confira o novo custo e confirme de novo.');
+        return;
+      }
+      if (result.errorCode === 'exchange_unavailable' || result.errorCode === 'market_closed') {
+        setUnavailable(true);
+        return;
+      }
+      setErrorMsg(normalizeExchangeV2Error(result.error ?? result.errorCode ?? '').message);
+      return;
+    }
+
     if (!quote || price == null || !validQty) return;
     setPlacing(true);
     setErrorMsg(null);
@@ -161,8 +230,8 @@ export default function ExchangeTradeSheet({
     setPlacing(false);
 
     if (result.ok || isDuplicateExchangeOrderResult(result)) {
+      setPlaced({ outcome, quantity, cost: activeCost });
       onFilled?.(outcome);
-      onClose();
       return;
     }
     if (result.requiresRequote) {
@@ -176,28 +245,28 @@ export default function ExchangeTradeSheet({
     }
     const friendly = normalizeExchangeV2Error(result.error ?? result.errorCode ?? '');
     setErrorMsg(friendly.message);
-  }, [quote, price, validQty, marketId, outcome, quantity, environment, onFilled, onClose, fetchQuote]);
+  }, [ammEnabled, ammQuote, quote, price, validQty, marketId, outcome, quantity, activeCost, environment, onFilled, onClose, fetchQuote]);
 
-  // Live countdown for the active quote; auto-invalidate when it lapses so a
-  // stale price can never be submitted.
+  // Live countdown for the active quote (CLOB or AMM); auto-invalidate when it
+  // lapses so a stale price can never be submitted.
   useEffect(() => {
-    if (!quote?.expiresAt) {
+    if (!activeExpiresAt) {
       setSecondsLeft(null);
       return;
     }
-    const compute = () => Math.max(0, Math.ceil((new Date(quote.expiresAt).getTime() - Date.now()) / 1000));
+    const compute = () => Math.max(0, Math.ceil((new Date(activeExpiresAt).getTime() - Date.now()) / 1000));
     setSecondsLeft(compute());
     const id = setInterval(() => {
       const s = compute();
       setSecondsLeft(s);
       if (s <= 0) {
         clearInterval(id);
-        setQuote(null);
+        clearQuotes();
         setNotice('A cotação expirou. Cote o palpite novamente.');
       }
     }, 1000);
     return () => clearInterval(id);
-  }, [quote?.expiresAt]);
+  }, [activeExpiresAt, clearQuotes]);
 
   const isTea = outcome === 'true';
   const sideColor = isTea ? colors.tea : colors.cap;
@@ -205,6 +274,33 @@ export default function ExchangeTradeSheet({
   const body = useMemo(() => {
     if (loading) {
       return <Text style={[styles.copy, { color: colors.muted }]}>Carregando mercado e livro de ofertas…</Text>;
+    }
+    if (placed) {
+      const isTeaPlaced = placed.outcome === 'true';
+      const ret = placed.quantity;
+      const profit = ret - placed.cost;
+      return (
+        <View style={styles.placedWrap}>
+          <View style={[styles.placedIcon, { backgroundColor: isTeaPlaced ? colors.teaBg : colors.capBg, borderColor: isTeaPlaced ? colors.tea : colors.cap }]}>
+            <Feather name="check" size={26} color={isTeaPlaced ? colors.tea : colors.cap} />
+          </View>
+          <Text style={[styles.placedTitle, { color: colors.text }]}>Feito!</Text>
+          <Text style={[styles.placedSub, { color: colors.muted }]}>
+            Você comprou {placed.quantity.toLocaleString('pt-BR')} {isTeaPlaced ? 'Verdade' : 'Mentira'}.
+          </Text>
+          <View style={[styles.placedReturn, { backgroundColor: colors.goldBg, borderColor: colors.gold }]}>
+            <Text style={[styles.placedReturnLabel, { color: colors.faint }]}>Se acertar, você recebe</Text>
+            <Text style={[styles.placedReturnValue, { color: colors.gold }]}>{ret.toLocaleString('pt-BR')} moedas</Text>
+            {profit > 0 ? <Text style={[styles.placedProfit, { color: colors.tea }]}>lucro de +{profit.toLocaleString('pt-BR')} moedas</Text> : null}
+          </View>
+          <Text style={[styles.placedNote, { color: colors.faint }]}>
+            Custo {placed.cost.toLocaleString('pt-BR')} moedas · você pode vender quando quiser enquanto o mercado estiver aberto. O resultado sai quando o mercado fechar.
+          </Text>
+          <Pressable onPress={onClose} style={[styles.submit, { backgroundColor: colors.primary }]} accessibilityRole="button">
+            <Text style={[styles.submitText, { color: colors.onPrimary }]}>Concluir</Text>
+          </Pressable>
+        </View>
+      );
     }
     if (unavailable || !snapshot) {
       return (
@@ -223,22 +319,22 @@ export default function ExchangeTradeSheet({
         <Text style={[styles.question, { color: colors.text }]}>{summary}</Text>
 
         <View style={styles.sideRow}>
-          <SideButton label="Verdade" active={isTea} color={colors.tea} bg={colors.teaBg} border={colors.teaBorder} onPress={() => { setOutcome('true'); setQuote(null); }} />
-          <SideButton label="Mentira" active={!isTea} color={colors.cap} bg={colors.capBg} border={colors.capBorder} onPress={() => { setOutcome('false'); setQuote(null); }} />
+          <SideButton label="Verdade" active={isTea} color={colors.tea} bg={colors.teaBg} border={colors.teaBorder} onPress={() => { setOutcome('true'); clearQuotes(); }} />
+          <SideButton label="Mentira" active={!isTea} color={colors.cap} bg={colors.capBg} border={colors.capBorder} onPress={() => { setOutcome('false'); clearQuotes(); }} />
         </View>
 
         {notice ? <Text style={[styles.notice, { color: colors.gold }]}>{notice}</Text> : null}
 
-        <Info label="Preço atual" value={probPct != null ? `${probPct}¢ · ${probPct}%` : '—'} />
-        <Info label="Custo estimado" value={`${cost.toLocaleString('pt-BR')} moedas`} />
+        <Info label={hasQuote ? 'Preço' : 'Preço atual'} value={activeProbPct != null ? `${activeProbPct}¢ · ${activeProbPct}%` : '—'} />
+        <Info label={hasQuote ? 'Custo' : 'Custo estimado'} value={`${activeCost.toLocaleString('pt-BR')} moedas`} />
         <Info label="Retorno se acertar" value={`${maxReturn.toLocaleString('pt-BR')} moedas`} />
-        <Info label="Lucro líquido" value={`${netWin.toLocaleString('pt-BR')} moedas`} highlight={netWin > 0 ? colors.gold : undefined} />
+        <Info label="Lucro líquido" value={`${activeNetWin.toLocaleString('pt-BR')} moedas`} highlight={activeNetWin > 0 ? colors.gold : undefined} />
 
         <View style={styles.stakeInputWrap}>
           <Text style={[styles.inputLabel, { color: colors.faint }]}>Quantidade de palpites (lotes inteiros)</Text>
           <TextInput
             value={qtyText}
-            onChangeText={(t) => { setQtyText(t); setQuote(null); }}
+            onChangeText={(t) => { setQtyText(t); clearQuotes(); }}
             keyboardType="number-pad"
             placeholder="100"
             placeholderTextColor={colors.faint}
@@ -250,7 +346,7 @@ export default function ExchangeTradeSheet({
           {QUICK_LOTS.map((value) => (
             <Pressable
               key={value}
-              onPress={() => { setQtyText(String(value)); setQuote(null); }}
+              onPress={() => { setQtyText(String(value)); clearQuotes(); }}
               style={[styles.stakeBtn, { borderColor: quantity === value ? colors.primary : colors.border, backgroundColor: quantity === value ? colors.primaryBg : colors.raised }]}
               accessibilityRole="button"
             >
@@ -259,18 +355,27 @@ export default function ExchangeTradeSheet({
           ))}
         </View>
 
-        {quote ? (
+        {hasQuote ? (
           <View style={[styles.quotePanel, { borderColor: colors.border, backgroundColor: colors.raised }]}>
-            <Info
-              label="Preço médio estimado"
-              value={quote.estimatedAverageExecutionPrice != null ? `${Math.round(quote.estimatedAverageExecutionPrice * 100)}¢` : (probPct != null ? `${probPct}¢` : '—')}
-            />
-            {quote.estimatedFillableQuantity > 0 && quote.estimatedFillableQuantity < quantity ? (
-              <Text style={[styles.warning, { color: colors.gold }]}>
-                Preenchimento parcial: ~{quote.estimatedFillableQuantity.toLocaleString('pt-BR')} de {quantity.toLocaleString('pt-BR')} agora; o resto fica na fila.
-              </Text>
+            {ammEnabled && ammQuote ? (
+              <>
+                <Info label="Preço médio" value={`${Math.round(ammQuote.unitPrice * 100)}¢`} />
+                <Info label="Novo preço após a compra" value={`${Math.round(ammQuote.priceYesAfter * 100)}¢ Verdade`} />
+              </>
+            ) : quote ? (
+              <>
+                <Info
+                  label="Preço médio estimado"
+                  value={quote.estimatedAverageExecutionPrice != null ? `${Math.round(quote.estimatedAverageExecutionPrice * 100)}¢` : (probPct != null ? `${probPct}¢` : '—')}
+                />
+                {quote.estimatedFillableQuantity > 0 && quote.estimatedFillableQuantity < quantity ? (
+                  <Text style={[styles.warning, { color: colors.gold }]}>
+                    Preenchimento parcial: ~{quote.estimatedFillableQuantity.toLocaleString('pt-BR')} de {quantity.toLocaleString('pt-BR')} agora; o resto fica na fila.
+                  </Text>
+                ) : null}
+                {quote.fees > 0 ? <Info label="Taxas" value={`${quote.fees.toLocaleString('pt-BR')} moedas`} /> : null}
+              </>
             ) : null}
-            {quote.fees > 0 ? <Info label="Taxas" value={`${quote.fees.toLocaleString('pt-BR')} moedas`} /> : null}
             {secondsLeft != null ? (
               <Text style={[styles.countdown, { color: secondsLeft <= 5 ? colors.danger : colors.faint }]}>
                 Cotação válida por {secondsLeft}s
@@ -279,11 +384,11 @@ export default function ExchangeTradeSheet({
           </View>
         ) : null}
 
-        {quote?.warnings?.length ? <Text style={[styles.warning, { color: colors.gold }]}>{quote.warnings[0]}</Text> : null}
+        {activeWarning ? <Text style={[styles.warning, { color: colors.gold }]}>{activeWarning}</Text> : null}
         {errorMsg ? <Text style={[styles.error, { color: colors.danger }]}>{errorMsg}</Text> : null}
         <Text style={[styles.disclaimer, { color: colors.faint }]}>Moedas são entretenimento, sem valor em dinheiro. Venda sujeita à liquidez.</Text>
 
-        {!quote ? (
+        {!hasQuote ? (
           <Pressable
             onPress={() => fetchQuote()}
             disabled={quoting || !validQty}
@@ -299,12 +404,12 @@ export default function ExchangeTradeSheet({
             style={[styles.submit, { backgroundColor: sideColor }, placing && styles.disabled]}
             accessibilityRole="button"
           >
-            <Text style={[styles.submitText, { color: colors.onPrimary }]}>{placing ? 'Confirmando…' : `Comprar ${maxReturn.toLocaleString('pt-BR')} · ${cost.toLocaleString('pt-BR')} moedas`}</Text>
+            <Text style={[styles.submitText, { color: colors.onPrimary }]}>{placing ? 'Confirmando…' : `Comprar ${maxReturn.toLocaleString('pt-BR')} · ${activeCost.toLocaleString('pt-BR')} moedas`}</Text>
           </Pressable>
         )}
       </>
     );
-  }, [loading, unavailable, snapshot, summary, isTea, colors, notice, probPct, cost, maxReturn, netWin, qtyText, quantity, quote, secondsLeft, errorMsg, quoting, placing, validQty, sideColor, fetchQuote, submit, onClose]);
+  }, [loading, placed, unavailable, snapshot, summary, isTea, colors, notice, probPct, maxReturn, qtyText, quantity, quote, ammEnabled, ammQuote, hasQuote, activeCost, activeNetWin, activeProbPct, activeWarning, clearQuotes, secondsLeft, errorMsg, quoting, placing, validQty, sideColor, fetchQuote, submit, onClose]);
 
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
@@ -376,4 +481,13 @@ const styles = StyleSheet.create({
   submit: { minHeight: 48, borderRadius: radius.sm, paddingVertical: spacing.md, alignItems: 'center', justifyContent: 'center', marginTop: spacing.sm },
   disabled: { opacity: 0.55 },
   submitText: { fontFamily: fonts.sansBold, fontSize: 14 },
+  placedWrap: { alignItems: 'center', gap: spacing.sm, paddingVertical: spacing.md },
+  placedIcon: { width: 56, height: 56, borderRadius: 28, borderWidth: 1.5, alignItems: 'center', justifyContent: 'center', marginBottom: spacing.xs },
+  placedTitle: { fontFamily: fonts.sansBold, fontSize: 22 },
+  placedSub: { fontFamily: fonts.sans, fontSize: 13, textAlign: 'center' },
+  placedReturn: { alignSelf: 'stretch', borderWidth: 1, borderRadius: radius.md, paddingVertical: spacing.lg, paddingHorizontal: spacing.md, alignItems: 'center', gap: 2, marginTop: spacing.sm },
+  placedReturnLabel: { fontFamily: fonts.monoBold, fontSize: 10, letterSpacing: 0.6 },
+  placedReturnValue: { fontFamily: fonts.monoBold, fontSize: 34, letterSpacing: -0.5 },
+  placedProfit: { fontFamily: fonts.sansSemi, fontSize: 13, marginTop: 2 },
+  placedNote: { fontFamily: fonts.sans, fontSize: 11, lineHeight: 16, textAlign: 'center', marginTop: spacing.xs },
 });

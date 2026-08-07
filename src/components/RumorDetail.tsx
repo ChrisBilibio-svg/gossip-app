@@ -14,6 +14,8 @@ import CommentSection from './CommentSection';
 import ReactionButtons from './ReactionButtons';
 import OddsBar from './OddsBar';
 import ExchangeMarketEntry from './ExchangeMarketEntry';
+import { exchangeV2UiEnabled } from '../lib/exchangeUiFlags';
+import { getMarketSnapshotV2 } from '../lib/exchangeV2';
 import StatusChip from './StatusChip';
 import Sparkline from './Sparkline';
 import Icon from './icons/Icon';
@@ -39,12 +41,27 @@ export default function RumorDetail({ rumor, onClose, onVoted, onReact, onOpenRu
   const [rating, setRating] = useState(4);
   const [repostMsg, setRepostMsg] = useState<string | null>(null);
   const [postingRepost, setPostingRepost] = useState(false);
+  // A market that runs on the exchange/AMM shows ONLY the trading card — the
+  // legacy fixed-odds vote block is hidden so there's one model per market.
+  const [exchangeActive, setExchangeActive] = useState(false);
 
   useEffect(() => {
     setExpanded(false);
     setRepostText('');
     setRating(4);
     setRepostMsg(null);
+  }, [rumor?.id]);
+
+  useEffect(() => {
+    if (!exchangeV2UiEnabled || !rumor?.id) {
+      setExchangeActive(false);
+      return;
+    }
+    let active = true;
+    getMarketSnapshotV2(rumor.id)
+      .then((snap) => { if (active) setExchangeActive(Boolean(snap) && snap!.state === 'open'); })
+      .catch(() => { if (active) setExchangeActive(false); });
+    return () => { active = false; };
   }, [rumor?.id]);
 
   const submitRepost = async () => {
@@ -204,17 +221,16 @@ export default function RumorDetail({ rumor, onClose, onVoted, onReact, onOpenRu
 
           {/* Position / resolved split */}
           {rumor.status === 'speculated' ? (
-            <>
+            exchangeActive ? (
+              // Exchange/AMM market → trading only, no legacy vote block.
+              <ExchangeMarketEntry rumorId={rumor.id} summary={rumor.summary} />
+            ) : (
               <VoteBlock
                 rumor={rumor}
                 onVoted={(choice) => onVoted?.(choice)}
                 viewerIsPro={viewerIsPro}
               />
-              {/* Real exchange_v2 entry point — self-hides unless a live,
-                  open market backs this rumor and the UI flag is on (off in
-                  prod). Trading itself stays server-gated. */}
-              <ExchangeMarketEntry rumorId={rumor.id} summary={rumor.summary} />
-            </>
+            )
           ) : <ResolvedSplit rumor={rumor} large />}
 
           {/* Reactions + repost */}
